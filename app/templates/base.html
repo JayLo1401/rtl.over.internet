@@ -5,12 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>{% block title %}rtl.over.internet{% endblock %}</title>
+<link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+<meta name="theme-color" content="#23854b">
 <link rel="stylesheet" href="/static/style.css">
 {% block head %}{% endblock %}
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/">rtl.over.internet</a>
+  <a class="brand" href="/"><img src="/static/logo.svg" alt=""><span>rtl.over.<b>internet</b></span></a>
   {% if user %}
   <nav>
     <a href="/">Instanzen</a>
