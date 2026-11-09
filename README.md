@@ -85,6 +85,7 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
 
 Update: `docker compose pull && docker compose up -d`. Backup: Verzeichnis `data/` (SQLite).
 Releases entstehen automatisch bei jedem Push auf `main`, siehe [docs/release.md](docs/release.md).
+Betrieb über Arcane: [docs/arcane.md](docs/arcane.md).
 Testablauf: [docs/testing.md](docs/testing.md).
 
 ## Lokaler Test
