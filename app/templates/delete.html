@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card narrow">
+  <h1>Instanz löschen</h1>
+  <p>„<strong>{{ inst.name }}</strong>“ wird gelöscht. Alle Geräte-Tokens dieser Instanz werden ungültig, verbundene Server werden getrennt und laufende Streams beendet. Das lässt sich nicht rückgängig machen.</p>
+  {% if request.query_params.get("error") %}<p class="error">Der Name stimmt nicht.</p>{% endif %}
+  <form method="post" action="/instances/{{ inst.id }}/delete">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Zur Bestätigung den Namen eingeben <input name="confirm_name" required autocomplete="off"></label>
+    <button class="danger" type="submit">Endgültig löschen</button>
+    <a href="/instances/{{ inst.id }}">Abbrechen</a>
+  </form>
+</section>
+{% endblock %}

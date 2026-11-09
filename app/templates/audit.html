@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Audit-Log · rtl.over.internet{% endblock %}
+{% block content %}
+<h1>Audit-Log</h1>
+<p class="muted">Die letzten 300 Einträge.</p>
+<table>
+  <thead><tr><th>Zeit</th><th>Aktion</th><th>Wer</th><th>IP</th><th>Details</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr class="{{ 'fail' if 'failed' in e.r.action or 'locked' in e.r.action or 'limited' in e.r.action }}">
+      <td>{{ e.r.ts | dt }}</td>
+      <td class="mono">{{ e.r.action }}</td>
+      <td class="mono">{{ e.r.actor }}</td>
+      <td class="mono">{{ e.r.ip }}</td>
+      <td class="detail">{{ e.detail }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

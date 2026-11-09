@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{% block title %}rtl.over.internet{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+{% block head %}{% endblock %}
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">rtl.over.internet</a>
+  {% if user %}
+  <nav>
+    <a href="/">Instanzen</a>
+    <a href="/audit">Audit-Log</a>
+    <a href="/export.json">Export (JSON)</a>
+    <form method="post" action="/logout" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="link">Abmelden ({{ user.username }})</button>
+    </form>
+  </nav>
+  {% endif %}
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+{% if user %}<footer class="foot muted">rtl.over.internet {{ version }}</footer>{% endif %}
+</body>
+</html>

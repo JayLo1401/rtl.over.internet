@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Instanzen</h1>
+{% if request.query_params.get("error") %}<p class="error">Bitte einen Namen eingeben.</p>{% endif %}
+<table>
+  <thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Server</th><th>Online</th><th>Streams</th></tr></thead>
+  <tbody>
+  {% for item in items %}
+    <tr>
+      <td><a href="/instances/{{ item.i.id }}">{{ item.i.name }}</a></td>
+      <td class="mono">{{ item.i.code | code }}</td>
+      <td>{% if item.i.enabled %}<span class="ok">aktiv</span>{% else %}<span class="bad">deaktiviert</span>{% endif %}</td>
+      <td>{{ item.devices }}</td>
+      <td>{{ item.online }}</td>
+      <td>{{ item.streams }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">Noch keine Instanzen.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<section class="card">
+  <h2>Neue Instanz</h2>
+  <form method="post" action="/instances" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name <input name="name" required maxlength="100" placeholder="z. B. Funkfreund Max"></label>
+    <button type="submit">Anlegen</button>
+  </form>
+  <p class="muted">Code und Passwort erzeugt der Server. Beides bleibt auf der Seite der Instanz abrufbar.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,41 @@
+# Produktion (Hetzner, hinter nginx). Siehe README.md und docs/nginx-rtl.jaycloud.at.conf.
+#
+# network_mode: host ist Absicht: Der Rendezvous-Endpunkt (UDP 3478/3479) muss die echte Absenderadresse
+# sehen. Docker-Portmapping (vor allem IPv6 → IPv4 über docker-proxy) würde sie verfälschen.
+# Die Weboberfläche bindet deshalb nur auf 127.0.0.1:8090, erreichbar nur über nginx.
+services:
+  rtl-over-internet:
+    # Release-Image aus dem Nexus (Release-Workflow). Feste Version statt latest: ROI_TAG=0.1.0
+    image: repository.jaycloud.at/rtl.over.internet/rtl-over-internet:${ROI_TAG:-latest}
+    container_name: rtl-over-internet
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Werte aus .env (Vorlage: .env.example), sonst die Standardwerte hier
+    environment:
+      ROI_PUBLIC_URL: ${ROI_PUBLIC_URL:-https://rtl.jaycloud.at}
+      ROI_ADMIN_USER: ${ROI_ADMIN_USER:-admin}
+      ROI_ADMIN_PASSWORD: ${ROI_ADMIN_PASSWORD:-}
+      ROI_TRUSTED_PROXIES: ${ROI_TRUSTED_PROXIES:-127.0.0.1/32,::1/128}
+      ROI_HTTP_HOST: ${ROI_HTTP_HOST:-127.0.0.1}
+      ROI_HTTP_PORT: ${ROI_HTTP_PORT:-8090}
+      ROI_RENDEZVOUS_BIND: ${ROI_RENDEZVOUS_BIND:-::}
+      ROI_RENDEZVOUS_PORTS: ${ROI_RENDEZVOUS_PORTS:-3478,3479}
+      ROI_RENDEZVOUS_HOST: ${ROI_RENDEZVOUS_HOST:-}
+      ROI_AUTH_MODES: ${ROI_AUTH_MODES:-all}
+      ROI_OIDC_ISSUER: ${ROI_OIDC_ISSUER:-}
+      ROI_OIDC_CLIENT_ID: ${ROI_OIDC_CLIENT_ID:-}
+      ROI_OIDC_CLIENT_SECRET: ${ROI_OIDC_CLIENT_SECRET:-}
+      ROI_OIDC_BUTTON_LABEL: ${ROI_OIDC_BUTTON_LABEL:-Mit authentik anmelden}
+      ROI_OIDC_ALLOWED_EMAILS: ${ROI_OIDC_ALLOWED_EMAILS:-}
+      ROI_OIDC_ALLOWED_GROUPS: ${ROI_OIDC_ALLOWED_GROUPS:-}
+      ROI_SECRET_KEY: ${ROI_SECRET_KEY:-}
+      ROI_COOKIE_SECURE: ${ROI_COOKIE_SECURE:-}
+      ROI_TIMEZONE: ${ROI_TIMEZONE:-Europe/Vienna}
+    volumes:
+      - ./data:/data

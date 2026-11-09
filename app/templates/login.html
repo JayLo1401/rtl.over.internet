@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Anmelden · rtl.over.internet{% endblock %}
+{% block content %}
+<section class="card narrow">
+  <h1>Anmelden</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if local %}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Benutzer <input name="username" autocomplete="username" required maxlength="64" autofocus></label>
+    <label>Passwort <input name="password" type="password" autocomplete="current-password" required maxlength="256"></label>
+    <button type="submit">Anmelden</button>
+  </form>
+  {% endif %}
+  {% if oidc %}
+  {% if local %}<p class="muted or">oder</p>{% endif %}
+  <a class="button block" href="/login/oidc">{{ oidc_label }}</a>
+  {% endif %}
+  {% if not local and not oidc %}
+  <p class="muted">Keine Anmeldeart aktiv.</p>
+  {% endif %}
+</section>
+{% endblock %}

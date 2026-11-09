@@ -1,0 +1,39 @@
+# Lokaler Test im LAN (z. B. Docker Desktop unter Windows), ohne TLS:
+#
+#   .env aus .env.example anlegen und setzen:
+#     ROI_PUBLIC_URL=http://192.168.100.101:8090     # LAN-Adresse dieses Rechners
+#     ROI_ADMIN_PASSWORD=mindestens-12-zeichen
+#   docker compose -f docker-compose.local.yml up --build
+#   (ROI_HTTP_HOST und ROI_RENDEZVOUS_BIND sind hier fest, weil der Container über Portmapping erreichbar sein muss.)
+#
+# Hinweis: Docker Desktop leitet UDP über einen Proxy weiter. Der Rendezvous-Endpunkt sieht dann nicht die echte
+# Absenderadresse, reflexive Adressen und NAT-Typ sind lokal nicht aussagekräftig. Für LAN-Tests reicht das
+# (die LAN-Kandidaten funktionieren). Für echte Werte den Dienst nativ starten: python -m app (siehe README).
+services:
+  rtl-over-internet:
+    build: .
+    image: rtl-over-internet:latest
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "8090:8090/tcp"
+      - "3478:3478/udp"
+      - "3479:3479/udp"
+    environment:
+      ROI_PUBLIC_URL: ${ROI_PUBLIC_URL:-http://localhost:8090}
+      ROI_ADMIN_USER: ${ROI_ADMIN_USER:-admin}
+      ROI_ADMIN_PASSWORD: ${ROI_ADMIN_PASSWORD:?ROI_ADMIN_PASSWORD setzen (mind. 12 Zeichen)}
+      ROI_HTTP_HOST: 0.0.0.0
+      ROI_RENDEZVOUS_BIND: 0.0.0.0
+      ROI_RENDEZVOUS_HOST: ${ROI_RENDEZVOUS_HOST:-}
+      ROI_SECRET_KEY: ${ROI_SECRET_KEY:-}
+      ROI_TIMEZONE: ${ROI_TIMEZONE:-Europe/Vienna}
+    volumes:
+      - roi-data:/data
+
+volumes:
+  roi-data:

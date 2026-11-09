@@ -1,0 +1,138 @@
+name: Release
+
+# Jeder Push auf main baut ein Release (gleiches Schema wie rtltcp.server / home.control):
+#   1. Version aus den Commits seit dem letzten Release (Tag v* mit GitHub-Release,
+#      siehe .github/scripts/prepare_release.py).
+#   2. Tests (pytest) und pip-audit.
+#   3. Docker-Image für linux/amd64 und linux/arm64 bauen, amd64 per Rauchtest prüfen
+#      (Start, /healthz), dann in die Docker-Registry im Nexus pushen:
+#        <DOCKER_REGISTRY>/<DOCKER_IMAGE>:<version>  und  :latest
+#   4. Tag v<version> und GitHub-Release mit Notizen und Image-Namen (keine Dateien auf GitHub).
+#      Schlägt etwas fehl, gibt es keinen Tag, der nächste Push baut dieselbe Version neu.
+#
+# Secrets:   NEXUS_USER, NEXUS_PASS (Nexus-Benutzer mit Push-Recht auf das Docker-Repository)
+# Variablen: NEXUS_URL (https://repository.jaycloud.at), NEXUS_REPO (rtl.over.internet, Docker hosted)
+#            Image: <Host aus NEXUS_URL>/<NEXUS_REPO>/rtl-over-internet (Nexus mit Path-Based-Routing)
+# Einrichtung des Docker-Repositorys im Nexus: docs/release.md
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Konfiguration prüfen
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_URL: ${{ vars.NEXUS_URL }}
+          NEXUS_REPO: ${{ vars.NEXUS_REPO }}
+        run: |
+          [ -n "$NEXUS_URL" ] && [ -n "$NEXUS_REPO" ] || { echo "::error::Variablen NEXUS_URL und NEXUS_REPO fehlen"; exit 1; }
+          [ -n "$NEXUS_USER" ] || { echo "::error::Secret NEXUS_USER fehlt"; exit 1; }
+          REGISTRY="${NEXUS_URL#https://}"; REGISTRY="${REGISTRY#http://}"; REGISTRY="${REGISTRY%%/*}"
+          echo "REGISTRY=$REGISTRY" >> "$GITHUB_ENV"
+          echo "IMAGE=$REGISTRY/$NEXUS_REPO/rtl-over-internet" >> "$GITHUB_ENV"
+          # Docker-Clients sprechen die Registry immer unter https://<host>/v2/ an (siehe docs/release.md)
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' "https://$REGISTRY/v2/")
+          [ "$CODE" = 401 ] || [ "$CODE" = 200 ] || {
+            echo "::error::https://$REGISTRY/v2/ antwortet mit HTTP $CODE statt 401: Docker-Routing im Nexus fehlt (docs/release.md)"; exit 1; }
+
+      - name: Nächste Version
+        run: |
+          git fetch origin --tags --force
+          BASE_REF=""
+          for TAG in $(git tag -l 'v*' --sort=-v:refname); do
+            if gh release view "$TAG" >/dev/null 2>&1; then BASE_REF="$TAG"; break; fi
+          done
+          BASE_VERSION="${BASE_REF#v}"
+          export BASE_REF BASE_VERSION NOTES_PATH="$RUNNER_TEMP/release_notes.md"
+          VERSION="$(python3 .github/scripts/prepare_release.py)"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Version $VERSION (Basis ${BASE_REF:-app/__init__.py})"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Tests und pip-audit
+        run: |
+          pip install -r requirements-dev.txt pip-audit
+          python -m pytest -q
+          pip-audit -r requirements.txt
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Rauchtest (amd64)
+        run: |
+          docker buildx build . --platform linux/amd64 --build-arg VERSION="$VERSION" --load -t roi:smoke
+          docker run -d --name smoke --read-only --tmpfs /tmp --cap-drop ALL \
+            -e ROI_ADMIN_USER=admin -e ROI_ADMIN_PASSWORD=smoke-test-passwort \
+            -e ROI_HTTP_HOST=0.0.0.0 -p 8090:8090 roi:smoke
+          for i in $(seq 1 20); do
+            curl -fsS -o /dev/null http://127.0.0.1:8090/healthz && break
+            sleep 1
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:8090/healthz
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d '{"instance_code":"ABCD-EFGH","user":"x","password":"y","server_id":"s"}' \
+            http://127.0.0.1:8090/api/v1/enroll)
+          [ "$CODE" = 401 ] || { echo "::error::Enrollment-Rauchtest: HTTP $CODE"; docker logs smoke; exit 1; }
+          docker logs smoke
+          docker rm -f smoke
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.NEXUS_USER }}
+          password: ${{ secrets.NEXUS_PASS }}
+
+      - name: Build und Push
+        run: |
+          docker buildx build . \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg VERSION="$VERSION" \
+            --label org.opencontainers.image.source="https://github.com/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.version="$VERSION" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --tag "$IMAGE:$VERSION" \
+            --tag "$IMAGE:latest" \
+            --push
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+      - name: Tag und GitHub-Release
+        run: |
+          TAG="v$VERSION"
+          {
+            cat "$RUNNER_TEMP/release_notes.md"
+            echo
+            echo "## Image"
+            echo
+            echo "\`$IMAGE:$VERSION\` (linux/amd64, linux/arm64), auch als \`:latest\`"
+            echo
+            echo "Update auf dem Server: \`docker compose pull && docker compose up -d\`"
+          } > "$RUNNER_TEMP/notes.md"
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "rtl.over.internet $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --latest

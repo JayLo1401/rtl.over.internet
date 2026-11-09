@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ inst.name }} · rtl.over.internet{% endblock %}
+{% block content %}
+<h1>{{ inst.name }} {% if inst.enabled %}<span class="tag ok">aktiv</span>{% else %}<span class="tag bad">deaktiviert</span>{% endif %}</h1>
+{% if request.query_params.get("error") %}<p class="error">Eingabe ungültig.</p>{% endif %}
+
+<section class="card">
+  <dl class="creds">
+    <dt>Instanz-Code</dt><dd class="mono big">{{ inst.code | code }}</dd>
+    <dt>Passwort</dt><dd>{% if password %}<details class="secret"><summary>anzeigen</summary><span class="mono big">{{ password }}</span></details>{% else %}<span class="muted">nicht gespeichert (vor dieser Funktion angelegt) – „Neues Passwort“ erzeugen</span>{% endif %}</dd>
+    <dt>Server</dt><dd class="mono">{{ request.app.state.settings.public_url }}</dd>
+    <dt>Angelegt</dt><dd>{{ inst.created_at | dt }}</dd>
+  </dl>
+  <div class="actions">
+    <a class="button" href="/instances/{{ inst.id }}/zugangsdaten.txt">Zugangsdaten herunterladen</a>
+    {% if inst.enabled %}
+    <form method="post" action="/instances/{{ inst.id }}/disable"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="warn">Deaktivieren</button></form>
+    {% else %}
+    <form method="post" action="/instances/{{ inst.id }}/enable"><input type="hidden" name="csrf" value="{{ csrf }}"><button>Aktivieren</button></form>
+    {% endif %}
+    <a class="button" href="/instances/{{ inst.id }}/password">Neues Passwort …</a>
+    <form method="post" action="/instances/{{ inst.id }}/code"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="check"><input type="checkbox" name="revoke_tokens" value="1"> Geräte-Tokens widerrufen</label>
+      <button>Code neu erzeugen</button></form>
+    <a class="button danger" href="/instances/{{ inst.id }}/delete">Löschen …</a>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Einstellungen</h2>
+  <form method="post" action="/instances/{{ inst.id }}/edit" class="grid">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Name <input name="name" value="{{ inst.name }}" required maxlength="100"></label>
+    <label>Max. gleichzeitige Streams <input name="max_streams" value="{{ inst.max_streams if inst.max_streams is not none else '' }}" inputmode="numeric" pattern="[0-9]*" placeholder="unbegrenzt"></label>
+    <label class="wide">Notizen <textarea name="notes" rows="3" maxlength="4000">{{ inst.notes }}</textarea></label>
+    <button type="submit">Speichern</button>
+  </form>
+</section>
+
+<h2>Verbundene rtltcp.server</h2>
+<table>
+  <thead><tr><th>Name</th><th>Status</th><th>Zuletzt online</th><th>IP</th><th>Version</th><th>Angemeldet von</th><th></th></tr></thead>
+  <tbody>
+  {% for d in devices %}
+    <tr class="{{ 'revoked' if d.revoked_at }}">
+      <td>{{ d.server_name }} <span class="muted">#{{ d.id }}</span></td>
+      <td>{% if d.revoked_at %}<span class="bad">widerrufen</span>{% elif d.id in online %}<span class="ok">online</span>{% else %}offline{% endif %}</td>
+      <td>{{ 'jetzt' if d.id in online else (d.last_seen | dt) }}</td>
+      <td class="mono">{{ online[d.id].ip if d.id in online else d.last_ip }}</td>
+      <td>{{ d.version }}</td>
+      <td class="mono">{{ d.enrolled_by }}</td>
+      <td class="actions">
+        {% if d.revoked_at %}
+        <form method="post" action="/devices/{{ d.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Entfernen</button></form>
+        {% else %}
+        {% if d.id in online %}<form method="post" action="/devices/{{ d.id }}/disconnect"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Trennen</button></form>{% endif %}
+        <form method="post" action="/devices/{{ d.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Widerrufen</button></form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="muted">Noch kein Server angemeldet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Freigegebene Sticks</h2>
+<table>
+  <thead><tr><th>Anbieter</th><th>Stick</th><th>Name</th><th>Tuner</th><th>Status</th><th>Kompression</th></tr></thead>
+  <tbody>
+  {% for sh, d in shares %}
+    <tr>
+      <td>{{ d.server_name }} {% if d.id not in online %}<span class="muted">(offline)</span>{% endif %}</td>
+      <td class="mono">{{ sh.stick_id }}</td>
+      <td>{{ sh.name }}</td>
+      <td>{{ sh.tuner }}</td>
+      <td>{{ sh.state }}</td>
+      <td>{{ 'ja' if sh.compression else 'nein' }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">Keine Freigaben.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Stream-Sitzungen</h2>
+<table>
+  <thead><tr><th>Beginn</th><th>Nutzer → Anbieter</th><th>Stick</th><th>Status</th><th>Dauer</th><th>Weg</th><th>NAT (S/C)</th><th>Daten (S/C)</th><th></th></tr></thead>
+  <tbody>
+  {% for x in sessions %}
+    <tr>
+      <td>{{ x.created_at | dt }}</td>
+      <td>{{ x.client_name }} → {{ x.provider_name }}</td>
+      <td>{{ x.stick_name or x.stick_id }}</td>
+      <td>{% if x.id in active %}<span class="ok">{{ active[x.id].state }}</span>{% else %}{{ x.result or x.state }}{% if x.reason %} <span class="muted">({{ x.reason }})</span>{% endif %}{% endif %}</td>
+      <td>{{ duration(x.connected_at, x.ended_at) }}</td>
+      <td class="mono">{{ x.path }}</td>
+      <td>{{ x.nat_server or '–' }} / {{ x.nat_client or '–' }}</td>
+      <td>{{ x.bytes_server | size }} / {{ x.bytes_client | size }}</td>
+      <td>{% if x.id in active %}<form method="post" action="/sessions/{{ x.id }}/end"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Beenden</button></form>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted">Noch keine Sitzungen.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

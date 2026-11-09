@@ -1,0 +1,23 @@
+name: CI
+
+# Pull Requests: Tests, pip-audit und Image-Build. Releases baut release.yml (Push auf main).
+
+on:
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt pip-audit
+      - run: python -m pytest -q
+      - run: pip-audit -r requirements.txt
+      - run: docker build -t rtl-over-internet:ci .
