@@ -1,6 +1,9 @@
 # TODO
 
-Stand: 09.11.2026. Reihenfolge = Abhängigkeiten.
+Stand: 10.11.2026. Reihenfolge = Abhängigkeiten.
+
+Geprüft am 10.11.: `/v2/` am Nexus weiterhin 404 (Punkt 1 offen). DNS `rtl.jaycloud.at` steht (A 168.119.210.123,
+AAAA 2a01:4f8:251:1a53::2). Auf dem Server antwortet HTTP schon (200), HTTPS noch nicht (kein Zertifikat/Server-Block).
 
 ## 1. Nexus: Docker-Registry erreichbar machen (blockiert das Release)
 
@@ -40,7 +43,7 @@ Details: [docs/release.md](docs/release.md)
 
 Anleitung: [docs/arcane.md](docs/arcane.md)
 
-- [ ] DNS `rtl.jaycloud.at` (A + AAAA)
+- [x] DNS `rtl.jaycloud.at` (A + AAAA)
 - [ ] Hetzner-Firewall: TCP 80/443, **UDP 3478–3479** eingehend
 - [ ] `/opt/rtl.over.internet/data` anlegen, `chown 10001:10001`, `chmod 700`
 - [ ] nginx + certbot für `rtl.jaycloud.at` ([docs/nginx-rtl.jaycloud.at.conf](docs/nginx-rtl.jaycloud.at.conf))
@@ -66,5 +69,6 @@ Anleitung: [docs/arcane.md](docs/arcane.md)
 
 ## Nebenbei
 
-- [ ] Dependabot-PRs (actions/checkout, docker/setup-qemu-action, docker/login-action) mergen, wenn grün
+- [x] Dependabot-PRs #7–#12 gemergt (checkout 7, setup-python 7, setup-qemu 4, setup-buildx 4, login-action 4,
+      tzdata 2026.6), Tests lokal grün
 - [ ] Alembic statt der kleinen Spaltenmigration in `app/db.py`, sobald sich das Schema weiter ändert
