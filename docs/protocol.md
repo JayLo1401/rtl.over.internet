@@ -1,6 +1,8 @@
 # Schnittstelle rtl.over.internet ↔ rtltcp.server
 
-Status: **Entwurf 4** · Gegenstück: `rtltcp.server` (Anbieter = Standort 1, Nutzer = Standort 2)
+Status: **Entwurf 5** · Gegenstück: `rtltcp.server` (Anbieter = Standort 1, Nutzer = Standort 2)
+
+Entwurf 5: Zugangsdatei (JSON) zum Hochladen beim Einrichten (§1.1). Das Protokoll selbst ist unverändert.
 
 Entwurf 4: optionale Felder `location` (Standort) und `antenna` (Antennentyp) pro Freigabe in `announce` und
 `shares` (§2.2, §2.3). Abwärtskompatibel, ältere Server senden sie nicht bzw. ignorieren sie.
@@ -39,6 +41,31 @@ POST /api/v1/enroll
 - `password`: das Passwort **der Instanz** (beim Anlegen erzeugt) oder das Admin-Passwort von rtl.over.internet.
 - Es gibt **keinen Benutzer** mehr (Entwurf 3). Ein mitgeschicktes `user` wird ignoriert, damit ältere
   rtltcp.server (1.5.0) weiter funktionieren.
+
+### 1.1 Zugangsdatei (Entwurf 5)
+
+In der Weboberfläche von rtl.over.internet lädt man pro Instanz eine Zugangsdatei herunter
+(`rtl-over-internet-<name>.json`). Der rtltcp.server nimmt sie bei „Instanz hinzufügen“ als Upload an
+und füllt damit Server-URL, Instanz-Code und Passwort aus, sodass nichts abgeschrieben werden muss.
+
+```json
+{
+  "format": "rtl.over.internet/credentials",
+  "version": 1,
+  "server": "https://rtl.jaycloud.at",
+  "instance_code": "K7QM-4XPD",
+  "password": "…",
+  "instance": { "id": 3, "name": "Funkfreund Max" },
+  "created_at": "2026-11-10T07:30:00+00:00"
+}
+```
+
+- Der rtltcp.server prüft `format` und `version` (nur `1` bekannt; unbekannte Felder ignorieren).
+- `server` ist die Basis-URL für Enrollment (`<server>/api/v1/enroll`) und Steuerkanal
+  (`<server>` mit `https` → `wss`, `/api/v1/control`).
+- Danach normal mit `instance_code` und `password` das Enrollment ausführen. Wie bei der Eingabe von Hand
+  wird nur das Geräte-Token gespeichert, **nicht die Datei und nicht das Passwort**.
+- Die Datei enthält das Passwort im Klartext. Wer sie hat, kann einen Server an der Instanz anmelden.
 - Der rtltcp.server speichert **nur das Token**. Es gilt pro Server und Instanz. Eine erneute Anmeldung
   desselben `server_id` bei derselben Instanz ersetzt das alte Token.
 - Das Token ist in der Weboberfläche widerrufbar. Danach antwortet der Steuerkanal mit Close-Code `4401`.

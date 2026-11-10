@@ -134,13 +134,16 @@ def test_create_instance_password_retrievable(client, app):
     assert password in detail.text  # für den Admin jederzeit abrufbar
     assert code in detail.text
 
-    txt = client.get(f"/instances/{inst.id}/zugangsdaten.txt")
-    assert txt.status_code == 200
-    assert txt.headers["content-type"].startswith("text/plain")
-    assert 'attachment; filename="zugangsdaten-funkfreund.max.txt"' == txt.headers["content-disposition"]
-    assert code in txt.text and password in txt.text and "Benutzer" not in txt.text
+    f = client.get(f"/instances/{inst.id}/zugangsdaten.json")
+    assert f.status_code == 200
+    assert f.headers["content-type"].startswith("application/json")
+    assert 'attachment; filename="rtl-over-internet-funkfreund.max.json"' == f.headers["content-disposition"]
+    data = f.json()
+    assert data["format"] == "rtl.over.internet/credentials" and data["version"] == 1
+    assert data["server"] == "http://testserver"
+    assert data["instance_code"] == code and data["password"] == password
+    assert data["instance"] == {"id": inst.id, "name": "Funkfreund Max"}
     assert "Benutzer" not in detail.text.split("Instanz-Code")[1].split("Einstellungen")[0]
-    assert "http://testserver" in txt.text
 
     # neues Passwort: erst Rückfrage, dann gilt das alte nicht mehr und das neue ist abrufbar
     confirm = client.get(f"/instances/{inst.id}/password")
@@ -176,7 +179,8 @@ def test_instance_without_stored_password(client, app):
     inst = make_instance(app)
     login(client)
     assert "nicht gespeichert" in client.get(f"/instances/{inst.id}").text
-    assert "nicht gespeichert" in client.get(f"/instances/{inst.id}/zugangsdaten.txt").text
+    r = client.get(f"/instances/{inst.id}/zugangsdaten.json")
+    assert r.status_code == 409 and "kein Passwort gespeichert" in r.text
 
 
 def test_secret_encryption():

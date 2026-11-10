@@ -63,8 +63,8 @@ class Settings:
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
     oidc_button_label: str = "Mit authentik anmelden"
-    oidc_allowed_emails: frozenset = frozenset()
-    oidc_allowed_groups: frozenset = frozenset()
+    oidc_admin_groups: frozenset = frozenset()  # Systemadmins
+    oidc_user_groups: frozenset = frozenset()  # dürfen sich anmelden, Rechte nur über Instanz-Zuweisungen
     extra: dict = field(default_factory=dict)
 
     @property
@@ -83,10 +83,14 @@ class Settings:
     def oidc_redirect_uri(self) -> str:
         return self.public_url + "/login/oidc/callback"
 
-    def oidc_allowed(self, email: str, groups) -> bool:
-        if email and email.lower() in self.oidc_allowed_emails:
-            return True
-        return bool(self.oidc_allowed_groups & {str(g) for g in (groups or [])})
+    def oidc_role(self, groups) -> str | None:
+        """"admin" (Systemadmin), "user" (nur Anmeldung) oder None (kein Zugang), aus dem Claim "groups"."""
+        have = {str(g) for g in (groups or [])} if isinstance(groups, (list, tuple, set)) else set()
+        if self.oidc_admin_groups & have:
+            return "admin"
+        if self.oidc_user_groups & have:
+            return "user"
+        return None
 
     @property
     def db_url(self) -> str:
@@ -147,15 +151,17 @@ def load_settings(**overrides) -> Settings:
         "oidc_client_id": _env("ROI_OIDC_CLIENT_ID", "") or "",
         "oidc_client_secret": _env("ROI_OIDC_CLIENT_SECRET", "") or "",
         "oidc_button_label": _env("ROI_OIDC_BUTTON_LABEL", "Mit authentik anmelden"),
-        "oidc_allowed_emails": _set("ROI_OIDC_ALLOWED_EMAILS", lower=True),
-        "oidc_allowed_groups": _set("ROI_OIDC_ALLOWED_GROUPS"),
+        "oidc_admin_groups": _set("ROI_OIDC_ADMIN_GROUPS"),
+        "oidc_user_groups": _set("ROI_OIDC_USER_GROUPS"),
     }
     oidc_configured = bool(oidc["oidc_issuer"] and oidc["oidc_client_id"] and oidc["oidc_client_secret"])
     if auth_modes == "oidc" and not oidc_configured:
         raise ConfigError("ROI_AUTH_MODES=oidc braucht ROI_OIDC_ISSUER, ROI_OIDC_CLIENT_ID und ROI_OIDC_CLIENT_SECRET")
-    if oidc_configured and auth_modes != "internal" and not (oidc["oidc_allowed_emails"] or oidc["oidc_allowed_groups"]):
-        raise ConfigError("OIDC: ROI_OIDC_ALLOWED_EMAILS oder ROI_OIDC_ALLOWED_GROUPS setzen "
-                          "(jede OIDC-Anmeldung hat Admin-Rechte)")
+    if oidc_configured and auth_modes != "internal" and not (oidc["oidc_admin_groups"] or oidc["oidc_user_groups"]):
+        raise ConfigError("OIDC: ROI_OIDC_ADMIN_GROUPS und/oder ROI_OIDC_USER_GROUPS setzen "
+                          "(ohne passende Gruppe kommt niemand per OIDC hinein)")
+    if auth_modes == "oidc" and not oidc["oidc_admin_groups"]:
+        raise ConfigError("ROI_AUTH_MODES=oidc braucht ROI_OIDC_ADMIN_GROUPS (sonst gibt es keinen Systemadmin)")
     if auth_modes in ("all", "internal"):
         if not admin_user or not admin_password:
             raise ConfigError("ROI_ADMIN_USER und ROI_ADMIN_PASSWORD(_FILE) müssen gesetzt sein")

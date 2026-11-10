@@ -1,7 +1,9 @@
 """Anmeldung über OpenID Connect (z. B. authentik), wie bei order.manager.
 
-Jede OIDC-Anmeldung hat Admin-Rechte. Deshalb darf nur hinein, wer in ROI_OIDC_ALLOWED_EMAILS steht
-oder einer Gruppe aus ROI_OIDC_ALLOWED_GROUPS angehört (Claim "groups", bei authentik im Scope "profile").
+Die Rolle kommt aus dem Claim "groups" (bei authentik im Scope "profile"):
+ROI_OIDC_ADMIN_GROUPS = Systemadmin, ROI_OIDC_USER_GROUPS = Benutzer ohne Rechte (bis ihm Instanzen
+zugewiesen werden). Wer in keiner der Gruppen ist, kommt nicht hinein. Die Rolle wird bei jeder
+Anmeldung neu aus den Gruppen übernommen.
 """
 
 from __future__ import annotations
@@ -78,7 +80,8 @@ async def oidc_callback(request: Request):
     groups = info.get("groups") or []
     if "@" not in email:
         return web._login_page(request, "Der Anmeldedienst hat keine E-Mail-Adresse übermittelt.", 400)
-    if not settings.oidc_allowed(email, groups):
+    role = settings.oidc_role(groups)
+    if role is None:
         app.state.login_ip.fail(ip)
         web._audit(request, "oidc_denied", actor=email)
         return web._login_page(request, f"Kein Zugriff für {email}.", 403)
@@ -87,10 +90,13 @@ async def oidc_callback(request: Request):
         user = s.scalar(select(User).where(User.username == email, User.auth_source == "oidc"))
         if user is None:
             # Kein Passwort: das Konto ist nur über OIDC nutzbar ("!" ist kein gültiger Argon2-Hash)
-            user = User(username=email, password_hash="!oidc", is_admin=True, auth_source="oidc")
+            user = User(username=email, password_hash="!oidc", auth_source="oidc")
             s.add(user)
-            audit(s, "oidc_user_created", actor=email, ip=ip)
-            s.commit()
+            audit(s, "oidc_user_created", actor=email, ip=ip, role=role)
+        if user.is_admin != (role == "admin"):
+            audit(s, "oidc_role_changed", actor=email, ip=ip, role=role)
+        user.is_admin = role == "admin"
+        s.commit()
         user_id = user.id
 
     # Weiterleitung per Seite statt 303: Nach dem seitenübergreifenden Rücksprung würde der Browser das

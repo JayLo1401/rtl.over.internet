@@ -2,6 +2,7 @@
 {% block content %}
 <section class="card narrow">
   <h1>{{ status }} – {{ text }}</h1>
+  {% if message %}<p>{{ message }}</p>{% endif %}
   <p><a href="/">Zur Startseite</a></p>
 </section>
 {% endblock %}

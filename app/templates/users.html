@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Benutzer · rtl.over.internet{% endblock %}
+{% block content %}
+<h1>Benutzer</h1>
+{% if error %}<p class="error">{{ error }}</p>{% endif %}
+{% if new_user %}
+<section class="card">
+  <p>Zugangsdaten für <strong class="mono">{{ new_user }}</strong>. Das Passwort wird nur jetzt angezeigt, der Benutzer kann es danach unter „Konto“ selbst ändern.</p>
+  <dl class="creds">
+    <dt>Adresse</dt><dd class="mono">{{ request.app.state.settings.public_url }}</dd>
+    <dt>Benutzer</dt><dd class="mono big">{{ new_user }}</dd>
+    <dt>Passwort</dt><dd class="mono big">{{ new_password }}</dd>
+  </dl>
+</section>
+{% endif %}
+
+<table>
+  <thead><tr><th>Benutzer</th><th>Anmeldung</th><th>Rolle</th><th>Instanzen</th><th>Angelegt</th><th></th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    {% set env = u.auth_source == 'local' and u.username == env_admin %}
+    <tr>
+      <td class="mono">{{ u.username }}</td>
+      <td>{{ 'OIDC' if u.auth_source == 'oidc' else 'lokal' }}{% if env %} <span class="muted">(.env)</span>{% endif %}</td>
+      <td>{{ 'Systemadmin' if u.is_admin else 'Benutzer' }}</td>
+      <td>
+        {% if u.is_admin %}<span class="muted">alle</span>
+        {% else %}
+          {% for inst, role in memberships.get(u.id, []) %}<a href="/instances/{{ inst.id }}">{{ inst.name }}</a> <span class="muted">({{ role_labels[role] }})</span>{{ ', ' if not loop.last }}{% else %}<span class="muted">keine</span>{% endfor %}
+        {% endif %}
+      </td>
+      <td>{{ u.created_at | dt }}</td>
+      <td class="actions">
+        {% if not env %}
+        {% if u.auth_source == 'local' %}<form method="post" action="/users/{{ u.id }}/password"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Neues Passwort</button></form>{% endif %}
+        {% if u.id != user.id %}<form method="post" action="/users/{{ u.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Löschen</button></form>{% endif %}
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<section class="card">
+  <h2>Lokalen Benutzer anlegen</h2>
+  <form method="post" action="/users" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Benutzername <input name="username" required maxlength="32" pattern="[A-Za-z0-9._\-]{2,32}"></label>
+    <button type="submit">Anlegen</button>
+  </form>
+  <p class="muted">Neue Benutzer haben keine Rechte, bis ihnen auf der Seite einer Instanz eine Rolle zugewiesen wird.
+     OIDC-Benutzer erscheinen hier nach ihrer ersten Anmeldung; ihre Systemadmin-Rolle kommt aus der Gruppe im Anmeldedienst.</p>
+</section>
+{% endblock %}

@@ -33,6 +33,8 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(64), unique=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Systemadmin: der Admin aus ROI_ADMIN_USER oder ein OIDC-Benutzer in ROI_OIDC_ADMIN_GROUPS.
+    # Alle anderen haben nur die Rechte aus instance_members.
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     auth_source: Mapped[str] = mapped_column(String(16), default="local")  # local | oidc
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -65,6 +67,18 @@ class Instance(Base):
     devices: Mapped[list["Device"]] = relationship(
         back_populates="instance", cascade="all, delete-orphan", passive_deletes=True
     )
+
+
+class InstanceMember(Base):
+    """Zuweisung eines Benutzers zu einer Instanz. role: "admin" (Instanz-Admin) oder "user" (nur lesen)."""
+
+    __tablename__ = "instance_members"
+    __table_args__ = (UniqueConstraint("instance_id", "user_id"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("instances.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    role: Mapped[str] = mapped_column(String(8), default="user")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
 class Device(Base):

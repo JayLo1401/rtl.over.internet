@@ -2,24 +2,33 @@
 {% block content %}
 <h1>Instanzen</h1>
 {% if request.query_params.get("error") %}<p class="error">Bitte einen Namen eingeben.</p>{% endif %}
+{% if items %}
 <table>
-  <thead><tr><th>Name</th><th>Code</th><th>Status</th><th>Server</th><th>Online</th><th>Streams</th></tr></thead>
+  <thead><tr><th>Name</th><th>Code</th>{% if not is_sys %}<th>Rolle</th>{% endif %}<th>Status</th><th>Server</th><th>Online</th><th>Streams</th></tr></thead>
   <tbody>
   {% for item in items %}
     <tr>
       <td><a href="/instances/{{ item.i.id }}">{{ item.i.name }}</a></td>
       <td class="mono">{{ item.i.code | code }}</td>
+      {% if not is_sys %}<td>{{ role_labels[item.role] }}</td>{% endif %}
       <td>{% if item.i.enabled %}<span class="ok">aktiv</span>{% else %}<span class="bad">deaktiviert</span>{% endif %}</td>
       <td>{{ item.devices }}</td>
       <td>{{ item.online }}</td>
       <td>{{ item.streams }}</td>
     </tr>
-  {% else %}
-    <tr><td colspan="6" class="muted">Noch keine Instanzen.</td></tr>
   {% endfor %}
   </tbody>
 </table>
+{% elif is_sys %}
+<p class="muted">Noch keine Instanzen.</p>
+{% else %}
+<section class="card">
+  <p>Dir ist noch keine Instanz zugewiesen.</p>
+  <p class="muted">Ein Systemadmin kann dir Instanzen als Benutzer oder Instanz-Admin zuweisen.</p>
+</section>
+{% endif %}
 
+{% if is_sys %}
 <section class="card">
   <h2>Neue Instanz</h2>
   <form method="post" action="/instances" class="row">
@@ -29,4 +38,5 @@
   </form>
   <p class="muted">Code und Passwort erzeugt der Server. Beides bleibt auf der Seite der Instanz abrufbar.</p>
 </section>
+{% endif %}
 {% endblock %}

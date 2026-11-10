@@ -13,10 +13,16 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
 - Weboberfläche für den Admin: Instanzen anlegen, umbenennen, deaktivieren, löschen, Code und Passwort neu erzeugen,
   verbundene Server, Freigaben und Stream-Sitzungen ansehen, Server trennen oder widerrufen, Sitzungen beenden, Audit-Log
 - **Instanz** = Freigabegruppe. Jede Instanz hat einen Code (z. B. `K7QM-4XPD`) und ein erzeugtes Passwort.
-  Beides gibt man zusammen weiter; der Admin kann es jederzeit ansehen und als Textdatei herunterladen.
+  Beides gibt man zusammen weiter; es ist jederzeit auf der Seite der Instanz abrufbar.
   Mit dem Admin-Passwort kann man sich ebenfalls an jeder Instanz anmelden.
-- Export aller Daten als JSON (Instanzen samt Passwörtern, Geräte, Freigaben, Sitzungen, Audit-Log).
-  Der Dienst ist für einen einzelnen Betreiber gedacht: Der Admin sieht alles.
+- Zugangsdatei (JSON) pro Instanz zum Hochladen im rtltcp.server, damit nichts abgeschrieben werden muss
+- Benutzer und Rechte:
+  - **Systemadmin** (Admin aus der `.env` oder OIDC-Gruppe `ROI_OIDC_ADMIN_GROUPS`): alles, auch Benutzer verwalten
+  - **Instanz-Admin**: verwaltet die zugewiesene Instanz (außer löschen), kann woanders auch nur Benutzer sein
+  - **Benutzer**: sieht die zugewiesene Instanz mit Zugangsdaten und Status und lädt die Zugangsdatei herunter
+  - Lokale Benutzer legt der Systemadmin an, OIDC-Benutzer (`ROI_OIDC_USER_GROUPS`) erscheinen nach der ersten
+    Anmeldung. Neue Benutzer haben keine Rechte, bis ihnen Instanzen zugewiesen werden.
+- Export aller Daten als JSON (nur Systemadmin)
   Der Admin kann sich zusätzlich mit seinen eigenen Zugangsdaten an jeder Instanz anmelden.
 - Enrollment (`POST /api/v1/enroll`), Steuerkanal (`wss://…/api/v1/control`), Rendezvous (UDP 3478 + 3479)
 
@@ -45,7 +51,7 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
 | `ROI_PUBLIC_URL` | `http://localhost:8090` | öffentliche Adresse, z. B. `https://rtl.jaycloud.at` |
 | `ROI_AUTH_MODES` | `all` | `all` (Passwort + OIDC), `internal` (nur Passwort), `oidc` (nur OIDC, kein Admin-Passwort nötig) |
 | `ROI_OIDC_ISSUER`, `ROI_OIDC_CLIENT_ID`, `ROI_OIDC_CLIENT_SECRET` | leer | OpenID Connect (authentik, wie bei order.manager). Redirect-URI: `<ROI_PUBLIC_URL>/login/oidc/callback` |
-| `ROI_OIDC_ALLOWED_EMAILS` / `ROI_OIDC_ALLOWED_GROUPS` | leer | wer per OIDC hinein darf (Pflicht, sobald OIDC konfiguriert ist; jede OIDC-Anmeldung ist Admin) |
+| `ROI_OIDC_ADMIN_GROUPS` / `ROI_OIDC_USER_GROUPS` | leer | Gruppen aus dem Claim `groups`: Systemadmin bzw. Benutzer ohne Rechte (bis ihm Instanzen zugewiesen werden). Mindestens eine Pflicht, sobald OIDC konfiguriert ist |
 | `ROI_OIDC_BUTTON_LABEL` | `Mit authentik anmelden` | Text des Buttons |
 | `ROI_TRUSTED_PROXIES` | leer | IPs/Netze, von denen `X-Forwarded-For` übernommen wird (nginx) |
 | `ROI_SECRET_KEY` | erzeugt | Schlüssel für CSRF-Tokens (mind. 32 Zeichen). Fehlt er, wird er in `/data/secret_key` angelegt. |

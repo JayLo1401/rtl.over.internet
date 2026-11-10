@@ -16,8 +16,12 @@
   {% if user %}
   <nav>
     <a href="/">Instanzen</a>
+    {% if is_sys %}
+    <a href="/users">Benutzer</a>
     <a href="/audit">Audit-Log</a>
     <a href="/export.json">Export (JSON)</a>
+    {% endif %}
+    {% if can_change_password %}<a href="/account">Konto</a>{% endif %}
     <form method="post" action="/logout" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf }}">
       <button type="submit" class="link">Abmelden ({{ user.username }})</button>

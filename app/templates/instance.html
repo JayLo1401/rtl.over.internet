@@ -2,17 +2,19 @@
 {% block title %}{{ inst.name }} · rtl.over.internet{% endblock %}
 {% block content %}
 <h1>{{ inst.name }} {% if inst.enabled %}<span class="tag ok">aktiv</span>{% else %}<span class="tag bad">deaktiviert</span>{% endif %}</h1>
+{% if not is_sys %}<p class="muted">Deine Rolle: {{ role_labels[role] }}</p>{% endif %}
 {% if request.query_params.get("error") %}<p class="error">Eingabe ungültig.</p>{% endif %}
 
 <section class="card">
   <dl class="creds">
     <dt>Instanz-Code</dt><dd class="mono big">{{ inst.code | code }}</dd>
-    <dt>Passwort</dt><dd>{% if password %}<details class="secret"><summary>anzeigen</summary><span class="mono big">{{ password }}</span></details>{% else %}<span class="muted">nicht gespeichert (vor dieser Funktion angelegt) – „Neues Passwort“ erzeugen</span>{% endif %}</dd>
+    <dt>Passwort</dt><dd>{% if password %}<details class="secret"><summary>anzeigen</summary><span class="mono big">{{ password }}</span></details>{% else %}<span class="muted">nicht gespeichert (vor dieser Funktion angelegt){% if can_admin %} – „Neues Passwort“ erzeugen{% endif %}</span>{% endif %}</dd>
     <dt>Server</dt><dd class="mono">{{ request.app.state.settings.public_url }}</dd>
     <dt>Angelegt</dt><dd>{{ inst.created_at | dt }}</dd>
   </dl>
   <div class="actions">
-    <a class="button" href="/instances/{{ inst.id }}/zugangsdaten.txt">Zugangsdaten herunterladen</a>
+    {% if password %}<a class="button" href="/instances/{{ inst.id }}/zugangsdaten.json">Zugangsdatei herunterladen</a>{% endif %}
+    {% if can_admin %}
     {% if inst.enabled %}
     <form method="post" action="/instances/{{ inst.id }}/disable"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="warn">Deaktivieren</button></form>
     {% else %}
@@ -22,10 +24,13 @@
     <form method="post" action="/instances/{{ inst.id }}/code"><input type="hidden" name="csrf" value="{{ csrf }}">
       <label class="check"><input type="checkbox" name="revoke_tokens" value="1"> Geräte-Tokens widerrufen</label>
       <button>Code neu erzeugen</button></form>
-    <a class="button danger" href="/instances/{{ inst.id }}/delete">Löschen …</a>
+    {% endif %}
+    {% if is_sys %}<a class="button danger" href="/instances/{{ inst.id }}/delete">Löschen …</a>{% endif %}
   </div>
+  {% if password %}<p class="muted">Die Zugangsdatei im rtltcp.server unter „Instanz hinzufügen“ hochladen, dann muss nichts abgeschrieben werden.</p>{% endif %}
 </section>
 
+{% if can_admin %}
 <section class="card">
   <h2>Einstellungen</h2>
   <form method="post" action="/instances/{{ inst.id }}/edit" class="grid">
@@ -37,9 +42,49 @@
   </form>
 </section>
 
+<section class="card">
+  <h2>Zugewiesene Benutzer</h2>
+  <table>
+    <thead><tr><th>Benutzer</th><th>Anmeldung</th><th>Rolle</th>{% if is_sys %}<th></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for m, u in members %}
+      <tr>
+        <td class="mono">{{ u.username }}</td>
+        <td>{{ 'OIDC' if u.auth_source == 'oidc' else 'lokal' }}</td>
+        <td>
+          {% if is_sys %}
+          <form method="post" action="/instances/{{ inst.id }}/members" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="user_id" value="{{ u.id }}">
+            <select name="role"><option value="user"{{ ' selected' if m.role == 'user' }}>Benutzer</option><option value="admin"{{ ' selected' if m.role == 'admin' }}>Instanz-Admin</option></select>
+            <button class="small">Ändern</button>
+          </form>
+          {% else %}{{ role_labels[m.role] }}{% endif %}
+        </td>
+        {% if is_sys %}<td><form method="post" action="/instances/{{ inst.id }}/members/{{ u.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Entfernen</button></form></td>{% endif %}
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="muted">Niemand zugewiesen (Systemadmins sehen alle Instanzen).</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if is_sys %}
+  {% if candidates %}
+  <form method="post" action="/instances/{{ inst.id }}/members" class="row">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Benutzer <select name="user_id">{% for u in candidates %}<option value="{{ u.id }}">{{ u.username }}{{ ' (OIDC)' if u.auth_source == 'oidc' }}</option>{% endfor %}</select></label>
+    <label>Rolle <select name="role"><option value="user">Benutzer (nur lesen)</option><option value="admin">Instanz-Admin</option></select></label>
+    <button type="submit">Zuweisen</button>
+  </form>
+  {% else %}
+  <p class="muted">Keine weiteren Benutzer. Lokale Benutzer unter „Benutzer“ anlegen, OIDC-Benutzer erscheinen nach ihrer ersten Anmeldung.</p>
+  {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
 <h2>Verbundene rtltcp.server</h2>
 <table>
-  <thead><tr><th>Name</th><th>Status</th><th>Zuletzt online</th><th>IP</th><th>Version</th><th>Angemeldet von</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Status</th><th>Zuletzt online</th><th>IP</th><th>Version</th><th>Angemeldet von</th>{% if can_admin %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for d in devices %}
     <tr class="{{ 'revoked' if d.revoked_at }}">
@@ -49,6 +94,7 @@
       <td class="mono">{{ online[d.id].ip if d.id in online else d.last_ip }}</td>
       <td>{{ d.version }}</td>
       <td class="mono">{{ d.enrolled_by }}</td>
+      {% if can_admin %}
       <td class="actions">
         {% if d.revoked_at %}
         <form method="post" action="/devices/{{ d.id }}/delete"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small">Entfernen</button></form>
@@ -57,6 +103,7 @@
         <form method="post" action="/devices/{{ d.id }}/revoke"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Widerrufen</button></form>
         {% endif %}
       </td>
+      {% endif %}
     </tr>
   {% else %}
     <tr><td colspan="7" class="muted">Noch kein Server angemeldet.</td></tr>
@@ -87,7 +134,7 @@
 
 <h2>Stream-Sitzungen</h2>
 <table>
-  <thead><tr><th>Beginn</th><th>Nutzer → Anbieter</th><th>Stick</th><th>Status</th><th>Dauer</th><th>Weg</th><th>NAT (S/C)</th><th>Daten (S/C)</th><th></th></tr></thead>
+  <thead><tr><th>Beginn</th><th>Nutzer → Anbieter</th><th>Stick</th><th>Status</th><th>Dauer</th><th>Weg</th><th>NAT (S/C)</th><th>Daten (S/C)</th>{% if can_admin %}<th></th>{% endif %}</tr></thead>
   <tbody>
   {% for x in sessions %}
     <tr>
@@ -99,7 +146,7 @@
       <td class="mono">{{ x.path }}</td>
       <td>{{ x.nat_server or '–' }} / {{ x.nat_client or '–' }}</td>
       <td>{{ x.bytes_server | size }} / {{ x.bytes_client | size }}</td>
-      <td>{% if x.id in active %}<form method="post" action="/sessions/{{ x.id }}/end"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Beenden</button></form>{% endif %}</td>
+      {% if can_admin %}<td>{% if x.id in active %}<form method="post" action="/sessions/{{ x.id }}/end"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="small warn">Beenden</button></form>{% endif %}</td>{% endif %}
     </tr>
   {% else %}
     <tr><td colspan="9" class="muted">Noch keine Sitzungen.</td></tr>

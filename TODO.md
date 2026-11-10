@@ -61,8 +61,11 @@ Anleitung: [docs/arcane.md](docs/arcane.md)
 ## 4. Optional: Anmeldung über authentik
 
 - [ ] In authentik „OAuth2/OpenID Provider“ (confidential), Redirect-URI `https://rtl.jaycloud.at/login/oidc/callback`
+- [ ] In authentik zwei Gruppen, z. B. `rtl-admins` (Systemadmin) und `rtl-users` (Benutzer), und im Provider
+      den Scope `profile` (liefert den Claim `groups`)
 - [ ] In `.env`: `ROI_OIDC_ISSUER`, `ROI_OIDC_CLIENT_ID`, `ROI_OIDC_CLIENT_SECRET`,
-      `ROI_OIDC_ALLOWED_EMAILS` (oder `ROI_OIDC_ALLOWED_GROUPS`)
+      `ROI_OIDC_ADMIN_GROUPS=rtl-admins`, `ROI_OIDC_USER_GROUPS=rtl-users`
+- [ ] Benutzern nach ihrer ersten Anmeldung Instanzen zuweisen (Seite der Instanz → „Zugewiesene Benutzer“)
 
 ## 5. Umstellen und Feldtest
 

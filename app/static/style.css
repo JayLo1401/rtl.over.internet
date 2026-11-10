@@ -57,6 +57,8 @@ button.warn { background: transparent; color: var(--warn); border-color: var(--w
 button.danger, .button.danger { background: var(--bad); border-color: var(--bad); }
 button.link { background: none; border: none; color: var(--accent); padding: 0; }
 form.inline { display: inline; }
+form.inline-form { display: flex; gap: 6px; align-items: center; margin: 0; }
+select { font: inherit; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
 .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; align-items: end; }
 .grid .wide { grid-column: 1 / -1; }

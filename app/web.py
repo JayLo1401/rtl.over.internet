@@ -1,4 +1,14 @@
-"""Weboberfläche für den Admin: Login, Instanzen, Geräte, Sitzungen, Audit-Log."""
+"""Weboberfläche: Login, Instanzen, Geräte, Sitzungen, Benutzer und Rechte, Audit-Log.
+
+Rollen:
+- Systemadmin (User.is_admin): der Admin aus ROI_ADMIN_USER oder ein OIDC-Benutzer in ROI_OIDC_ADMIN_GROUPS.
+  Darf alles: Instanzen anlegen/löschen, Benutzer verwalten und zuweisen, Audit-Log, Gesamtexport.
+- Instanz-Admin (InstanceMember.role == "admin"): verwaltet die zugewiesene Instanz (Einstellungen,
+  aktivieren/deaktivieren, Code/Passwort, Geräte, Sitzungen), aber nicht löschen.
+- Instanz-Benutzer (role == "user"): sieht die Instanz mit Zugangsdaten und Status, lädt die
+  Zugangsdaten herunter, sonst nichts.
+- Benutzer ohne Zuweisung sehen nach dem Login keine Instanzen.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +28,18 @@ from sqlalchemy import delete, func, select
 from starlette.concurrency import run_in_threadpool
 
 from .control import CLOSE_INSTANCE_DISABLED, CLOSE_TOKEN_INVALID
-from .db import AuditLog, Device, Instance, Share, StreamSession, User, WebSession, audit, utcnow
+from .db import (
+    AuditLog,
+    Device,
+    Instance,
+    InstanceMember,
+    Share,
+    StreamSession,
+    User,
+    WebSession,
+    audit,
+    utcnow,
+)
 from .security import (
     client_ip,
     csrf_ok,
@@ -37,6 +58,9 @@ from .security import (
 router = APIRouter()
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 _TZ = ZoneInfo(os.environ.get("ROI_TIMEZONE", "Europe/Vienna"))
+_LOCAL_USER_RE = re.compile(r"^[a-z0-9._-]{2,32}$")
+ROLE_LABELS = {"sysadmin": "Systemadmin", "admin": "Instanz-Admin", "user": "Benutzer"}
+CREDENTIALS_FORMAT = "rtl.over.internet/credentials"
 
 
 def _dt(value: datetime | None) -> str:
@@ -68,10 +92,19 @@ templates.env.filters["dt"] = _dt
 templates.env.filters["size"] = _size
 templates.env.filters["code"] = format_code
 templates.env.globals["duration"] = _duration
-templates.env.globals["version"] = os.environ.get("ROI_VERSION", "dev")  # nur für angemeldete Admins sichtbar
+templates.env.globals["version"] = os.environ.get("ROI_VERSION", "dev")  # nur für Angemeldete sichtbar
+templates.env.globals["role_labels"] = ROLE_LABELS
 
 
 class LoginRequired(Exception):
+    pass
+
+
+class _Forbidden(Exception):
+    pass
+
+
+class _NotFound(Exception):
     pass
 
 
@@ -104,7 +137,7 @@ def _current(request: Request) -> tuple[User, str] | None:
             s.commit()
             return None
         user = s.get(User, ws.user_id)
-        if user is None or not user.is_admin:
+        if user is None:
             return None
         # Anmeldeart inzwischen abgeschaltet (ROI_AUTH_MODES geändert): Sitzung gilt nicht mehr
         if (user.auth_source == "oidc" and not settings.oidc_active) or \
@@ -121,15 +154,20 @@ def render(request: Request, name: str, ctx: dict | None = None, status: int = 2
     if session_token:
         ctx.setdefault("csrf", csrf_token(secret, "session:" + session_token))
     ctx.setdefault("user", None)
+    user = ctx["user"]
+    ctx.setdefault("is_sys", bool(user and user.is_admin))
+    ctx.setdefault("can_change_password", bool(user and _can_change_password(request, user)))
     return templates.TemplateResponse(request, name, ctx, status_code=status)
 
 
-def error_page(request: Request, status: int):
-    texts = {403: "Zugriff verweigert", 404: "Nicht gefunden", 405: "Methode nicht erlaubt"}
-    return render(request, "error.html", {"status": status, "text": texts.get(status, "Fehler")}, status=status)
+def error_page(request: Request, status: int, message: str = ""):
+    texts = {403: "Zugriff verweigert", 404: "Nicht gefunden", 405: "Methode nicht erlaubt",
+             409: "Nicht möglich"}
+    return render(request, "error.html", {"status": status, "text": texts.get(status, "Fehler"),
+                                          "message": message}, status=status)
 
 
-async def admin(request: Request, *, post: bool = False):
+async def auth(request: Request, *, post: bool = False):
     """Prüft Sitzung und bei POST das CSRF-Token. Liefert (user, token, form)."""
     cur = _current(request)
     if cur is None:
@@ -143,8 +181,35 @@ async def admin(request: Request, *, post: bool = False):
     return user, token, form
 
 
-class _Forbidden(Exception):
-    pass
+def _need_sys(user: User) -> None:
+    if not user.is_admin:
+        raise _Forbidden()
+
+
+def _role(request: Request, user: User, instance_id: int) -> str | None:
+    """sysadmin | admin | user | None"""
+    if user.is_admin:
+        return "sysadmin"
+    with request.app.state.db.session() as s:
+        return s.scalar(select(InstanceMember.role).where(InstanceMember.instance_id == instance_id,
+                                                          InstanceMember.user_id == user.id))
+
+
+def _need(request: Request, user: User, instance_id: int, *, admin: bool = False) -> str:
+    """Zugriff auf eine Instanz. Ohne Zuweisung: 404 (Existenz wird nicht verraten)."""
+    with request.app.state.db.session() as s:
+        exists = s.get(Instance, instance_id) is not None
+    role = _role(request, user, instance_id) if exists else None
+    if role is None:
+        raise _NotFound()
+    if admin and role == "user":
+        raise _Forbidden()
+    return role
+
+
+def _can_change_password(request: Request, user: User) -> bool:
+    """Lokale Benutzer ändern ihr Passwort selbst; der Admin aus ROI_ADMIN_USER kommt aus der .env."""
+    return user.auth_source == "local" and user.username != request.app.state.settings.admin_user
 
 
 def _ip(request: Request) -> str:
@@ -209,8 +274,7 @@ async def login(request: Request):
                            429)
 
     with app.state.db.session() as s:
-        user = s.scalar(select(User).where(User.username == username, User.is_admin.is_(True),
-                                           User.auth_source == "local"))
+        user = s.scalar(select(User).where(User.username == username, User.auth_source == "local"))
         pw_hash = user.password_hash if user else None
         user_id = user.id if user else None
     ok = await run_in_threadpool(verify_password, pw_hash, password)
@@ -227,7 +291,7 @@ async def login(request: Request):
 
 
 def start_session(request: Request, resp: Response, user_id: int, actor: str, action: str) -> None:
-    """Neue Admin-Sitzung anlegen und das Cookie auf `resp` setzen."""
+    """Neue Sitzung anlegen und das Cookie auf `resp` setzen."""
     settings = request.app.state.settings
     ip = _ip(request)
     token = new_token()
@@ -244,7 +308,7 @@ def start_session(request: Request, resp: Response, user_id: int, actor: str, ac
 
 @router.post("/logout")
 async def logout(request: Request):
-    user, token, _ = await admin(request, post=True)
+    user, token, _ = await auth(request, post=True)
     with request.app.state.db.session() as s:
         s.execute(delete(WebSession).where(WebSession.token_hash == token_hash(token)))
         audit(s, "logout", actor=user.username, ip=_ip(request))
@@ -254,25 +318,71 @@ async def logout(request: Request):
     return resp
 
 
+# ------------------------------------------------------------------ Konto (eigenes Passwort)
+
+
+@router.get("/account", response_class=HTMLResponse)
+async def account(request: Request):
+    user, token, _ = await auth(request)
+    if not _can_change_password(request, user):
+        raise _Forbidden()
+    return render(request, "account.html", {"user": user}, session_token=token)
+
+
+@router.post("/account/password")
+async def account_password(request: Request):
+    user, token, form = await auth(request, post=True)
+    if not _can_change_password(request, user):
+        raise _Forbidden()
+    current = str(form.get("current", ""))[:256]
+    new = str(form.get("new", ""))[:256]
+    error = ""
+    with request.app.state.db.session() as s:
+        pw_hash = s.get(User, user.id).password_hash
+    if not await run_in_threadpool(verify_password, pw_hash, current):
+        error = "Das bisherige Passwort stimmt nicht."
+    elif len(new) < 12:
+        error = "Das neue Passwort muss mindestens 12 Zeichen lang sein."
+    elif new != str(form.get("repeat", "")):
+        error = "Die Wiederholung stimmt nicht überein."
+    if error:
+        return render(request, "account.html", {"user": user, "error": error}, status=400, session_token=token)
+    new_hash = await run_in_threadpool(hash_password, new)
+    with request.app.state.db.session() as s:
+        s.get(User, user.id).password_hash = new_hash
+        # alle anderen Sitzungen dieses Benutzers beenden
+        s.execute(delete(WebSession).where(WebSession.user_id == user.id,
+                                           WebSession.token_hash != token_hash(token)))
+        audit(s, "password_changed", actor=user.username, ip=_ip(request))
+        s.commit()
+    return render(request, "account.html", {"user": user, "saved": True}, session_token=token)
+
+
 # ------------------------------------------------------------------ Instanzen
 
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    user, token, _ = await admin(request)
+    user, token, _ = await auth(request)
     hub = request.app.state.hub
     with request.app.state.db.session() as s:
-        rows = list(s.scalars(select(Instance).order_by(Instance.name)))
+        if user.is_admin:
+            rows = [(i, "sysadmin") for i in s.scalars(select(Instance).order_by(Instance.name))]
+        else:
+            rows = list(s.execute(select(Instance, InstanceMember.role)
+                                  .join(InstanceMember, InstanceMember.instance_id == Instance.id)
+                                  .where(InstanceMember.user_id == user.id).order_by(Instance.name)).all())
         counts = dict(s.execute(select(Device.instance_id, func.count()).where(Device.revoked_at.is_(None))
                                 .group_by(Device.instance_id)).all())
-    items = [{"i": i, "devices": counts.get(i.id, 0), "online": len(hub.online(i.id)),
-              "streams": len(hub.active_sessions(i.id))} for i in rows]
+    items = [{"i": i, "role": role, "devices": counts.get(i.id, 0), "online": len(hub.online(i.id)),
+              "streams": len(hub.active_sessions(i.id))} for i, role in rows]
     return render(request, "index.html", {"user": user, "items": items}, session_token=token)
 
 
 @router.post("/instances")
 async def create_instance(request: Request):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
     name = " ".join(str(form.get("name", "")).split())[:100]
     if not name:
         return _back("/?error=1")
@@ -303,13 +413,10 @@ def _get_instance(request: Request, instance_id: int) -> Instance:
     return inst
 
 
-class _NotFound(Exception):
-    pass
-
-
 @router.get("/instances/{instance_id}", response_class=HTMLResponse)
 async def instance_detail(request: Request, instance_id: int):
-    user, token, _ = await admin(request)
+    user, token, _ = await auth(request)
+    role = _need(request, user, instance_id)
     inst = _get_instance(request, instance_id)
     hub = request.app.state.hub
     online = hub.online(instance_id)
@@ -321,47 +428,57 @@ async def instance_detail(request: Request, instance_id: int):
                            .order_by(Device.server_name, Share.stick_id)).all()
         sessions = list(s.scalars(select(StreamSession).where(StreamSession.instance_id == instance_id)
                                   .order_by(StreamSession.created_at.desc()).limit(50)))
+        members = list(s.execute(select(InstanceMember, User).join(User, User.id == InstanceMember.user_id)
+                                 .where(InstanceMember.instance_id == instance_id)
+                                 .order_by(User.username)).all())
+        member_ids = {u.id for _, u in members}
+        candidates = [u for u in s.scalars(select(User).where(User.is_admin.is_(False)).order_by(User.username))
+                      if u.id not in member_ids] if user.is_admin else []
     active = {x.id: x for x in hub.active_sessions(instance_id)}
     password = decrypt_secret(request.app.state.settings.secret_key, inst.password_enc)
     return render(request, "instance.html", {
-        "user": user, "inst": inst, "devices": devices, "online": online, "shares": shares,
-        "sessions": sessions, "active": active, "password": password}, session_token=token)
+        "user": user, "role": role, "can_admin": role in ("sysadmin", "admin"), "inst": inst,
+        "devices": devices, "online": online, "shares": shares, "sessions": sessions, "active": active,
+        "password": password, "members": members, "candidates": candidates}, session_token=token)
 
 
 def _attachment(filename: str) -> dict:
     return {"Content-Disposition": f'attachment; filename="{filename}"'}
 
 
-@router.get("/instances/{instance_id}/zugangsdaten.txt")
-async def credentials_file(request: Request, instance_id: int):
-    user, token, _ = await admin(request)
-    inst = _get_instance(request, instance_id)
-    settings = request.app.state.settings
-    password = decrypt_secret(settings.secret_key, inst.password_enc)
-    text = "\r\n".join([
-        f"rtl.over.internet – Zugangsdaten für „{inst.name}“",
-        "",
-        f"Server:        {settings.public_url}",
-        f"Instanz-Code:  {format_code(inst.code)}",
-        f"Passwort:      {password or '(nicht gespeichert – in der Weboberfläche „Neues Passwort“ erzeugen)'}",
-        "",
-        "Im rtltcp.server unter „Instanz hinzufügen“ eintragen.",
-        "Das Passwort wird dort nicht gespeichert, der Server bekommt ein eigenes, widerrufbares Token.",
-        "",
-    ])
-    _audit(request, "instance_credentials_downloaded", actor=user.username, instance_id=instance_id)
-    return Response(text.encode("utf-8"), media_type="text/plain; charset=utf-8",
-                    headers=_attachment(f"zugangsdaten-{_slug(inst.name)}.txt"))
-
-
 def _iso(value: datetime | None) -> str | None:
     return value.replace(tzinfo=timezone.utc).isoformat() if value else None
 
 
+@router.get("/instances/{instance_id}/zugangsdaten.json")
+async def credentials_file(request: Request, instance_id: int):
+    """Zugangsdatei zum Hochladen im rtltcp.server (Format siehe docs/protocol.md §1.1)."""
+    user, token, _ = await auth(request)
+    _need(request, user, instance_id)
+    inst = _get_instance(request, instance_id)
+    settings = request.app.state.settings
+    password = decrypt_secret(settings.secret_key, inst.password_enc)
+    if not password:
+        return error_page(request, 409, "Für diese Instanz ist kein Passwort gespeichert. Ein Instanz-Admin muss "
+                                        "zuerst „Neues Passwort“ erzeugen.")
+    data = {
+        "format": CREDENTIALS_FORMAT,
+        "version": 1,
+        "server": settings.public_url,
+        "instance_code": format_code(inst.code),
+        "password": password,
+        "instance": {"id": inst.id, "name": inst.name},
+        "created_at": _iso(utcnow()),
+    }
+    _audit(request, "instance_credentials_downloaded", actor=user.username, instance_id=instance_id)
+    return JSONResponse(data, headers=_attachment(f"rtl-over-internet-{_slug(inst.name)}.json"))
+
+
 @router.get("/export.json")
 async def export_all(request: Request):
-    """Alle Daten für den Admin (inkl. Instanz-Passwörter). Token-Hashes bleiben draußen, sie nützen nichts."""
-    user, token, _ = await admin(request)
+    """Alle Daten für den Systemadmin (inkl. Instanz-Passwörter). Token-Hashes bleiben draußen."""
+    user, token, _ = await auth(request)
+    _need_sys(user)
     settings = request.app.state.settings
     hub = request.app.state.hub
     with request.app.state.db.session() as s:
@@ -370,6 +487,8 @@ async def export_all(request: Request):
         shares = list(s.scalars(select(Share).order_by(Share.device_id, Share.stick_id)))
         sessions = list(s.scalars(select(StreamSession).order_by(StreamSession.created_at)))
         audit_rows = list(s.scalars(select(AuditLog).order_by(AuditLog.id)))
+        users = list(s.scalars(select(User).order_by(User.id)))
+        members = list(s.scalars(select(InstanceMember).order_by(InstanceMember.id)))
     data = {
         "exported_at": _iso(utcnow()),
         "public_url": settings.public_url,
@@ -379,6 +498,11 @@ async def export_all(request: Request):
             "password": decrypt_secret(settings.secret_key, i.password_enc), "enabled": i.enabled,
             "max_streams": i.max_streams, "notes": i.notes, "created_at": _iso(i.created_at),
         } for i in instances],
+        "users": [{
+            "id": u.id, "username": u.username, "auth_source": u.auth_source, "system_admin": u.is_admin,
+            "created_at": _iso(u.created_at),
+        } for u in users],
+        "members": [{"instance_id": m.instance_id, "user_id": m.user_id, "role": m.role} for m in members],
         "devices": [{
             "id": d.id, "instance_id": d.instance_id, "server_id": d.server_id, "server_name": d.server_name,
             "version": d.version, "enrolled_by": d.enrolled_by, "online": d.id in hub.conns,
@@ -411,7 +535,8 @@ async def export_all(request: Request):
 
 @router.post("/instances/{instance_id}/edit")
 async def edit_instance(request: Request, instance_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
+    _need(request, user, instance_id, admin=True)
     name = " ".join(str(form.get("name", "")).split())[:100]
     notes = str(form.get("notes", ""))[:4000]
     max_raw = str(form.get("max_streams", "")).strip()
@@ -445,7 +570,8 @@ async def disable_instance(request: Request, instance_id: int):
 
 
 async def _set_enabled(request: Request, instance_id: int, enabled: bool):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
+    _need(request, user, instance_id, admin=True)
     with request.app.state.db.session() as s:
         inst = s.get(Instance, instance_id)
         if inst is None:
@@ -461,7 +587,8 @@ async def _set_enabled(request: Request, instance_id: int, enabled: bool):
 
 @router.post("/instances/{instance_id}/code")
 async def regenerate_code(request: Request, instance_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
+    _need(request, user, instance_id, admin=True)
     revoke_all = form.get("revoke_tokens") == "1"
     with request.app.state.db.session() as s:
         inst = s.get(Instance, instance_id)
@@ -491,7 +618,8 @@ def _revoke_devices(s, instance_id: int) -> None:
 
 @router.get("/instances/{instance_id}/password", response_class=HTMLResponse)
 async def password_confirm(request: Request, instance_id: int):
-    user, token, _ = await admin(request)
+    user, token, _ = await auth(request)
+    _need(request, user, instance_id, admin=True)
     inst = _get_instance(request, instance_id)
     with request.app.state.db.session() as s:
         devices = s.scalar(select(func.count()).select_from(Device)
@@ -502,7 +630,8 @@ async def password_confirm(request: Request, instance_id: int):
 
 @router.post("/instances/{instance_id}/password")
 async def regenerate_password(request: Request, instance_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
+    _need(request, user, instance_id, admin=True)
     revoke_all = form.get("revoke_tokens") == "1"
     password = new_password()
     pw_hash = await run_in_threadpool(hash_password, password)
@@ -527,14 +656,16 @@ async def regenerate_password(request: Request, instance_id: int):
 
 @router.get("/instances/{instance_id}/delete", response_class=HTMLResponse)
 async def delete_confirm(request: Request, instance_id: int):
-    user, token, _ = await admin(request)
+    user, token, _ = await auth(request)
+    _need_sys(user)
     inst = _get_instance(request, instance_id)
     return render(request, "delete.html", {"user": user, "inst": inst}, session_token=token)
 
 
 @router.post("/instances/{instance_id}/delete")
 async def delete_instance(request: Request, instance_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
     inst = _get_instance(request, instance_id)
     if form.get("confirm_name", "") != inst.name:
         return _back(f"/instances/{instance_id}/delete?error=1")
@@ -547,6 +678,135 @@ async def delete_instance(request: Request, instance_id: int):
                   name=inst.name)
             s.commit()
     return _back("/")
+
+
+# ------------------------------------------------------------------ Zuweisungen (nur Systemadmin)
+
+
+@router.post("/instances/{instance_id}/members")
+async def add_member(request: Request, instance_id: int):
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
+    _get_instance(request, instance_id)
+    role = form.get("role")
+    member_id = str(form.get("user_id", ""))
+    if role not in ("admin", "user") or not member_id.isdigit():
+        return _back(f"/instances/{instance_id}?error=1")
+    with request.app.state.db.session() as s:
+        member = s.get(User, int(member_id))
+        if member is None or member.is_admin:
+            return _back(f"/instances/{instance_id}?error=1")
+        row = s.scalar(select(InstanceMember).where(InstanceMember.instance_id == instance_id,
+                                                    InstanceMember.user_id == member.id))
+        if row is None:
+            s.add(InstanceMember(instance_id=instance_id, user_id=member.id, role=role))
+        else:
+            row.role = role
+        audit(s, "member_set", actor=user.username, ip=_ip(request), instance_id=instance_id,
+              user=member.username, role=role)
+        s.commit()
+    return _back(f"/instances/{instance_id}")
+
+
+@router.post("/instances/{instance_id}/members/{member_id}/delete")
+async def remove_member(request: Request, instance_id: int, member_id: int):
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
+    with request.app.state.db.session() as s:
+        row = s.scalar(select(InstanceMember).where(InstanceMember.instance_id == instance_id,
+                                                    InstanceMember.user_id == member_id))
+        if row is not None:
+            member = s.get(User, member_id)
+            s.delete(row)
+            audit(s, "member_removed", actor=user.username, ip=_ip(request), instance_id=instance_id,
+                  user=member.username if member else member_id)
+            s.commit()
+    return _back(f"/instances/{instance_id}")
+
+
+# ------------------------------------------------------------------ Benutzer (nur Systemadmin)
+
+
+def _users_page(request: Request, user: User, token: str, **extra):
+    with request.app.state.db.session() as s:
+        users = list(s.scalars(select(User).order_by(User.is_admin.desc(), User.username)))
+        rows = s.execute(select(InstanceMember, Instance).join(Instance, Instance.id == InstanceMember.instance_id)
+                         .order_by(Instance.name)).all()
+    memberships: dict[int, list] = {}
+    for m, inst in rows:
+        memberships.setdefault(m.user_id, []).append((inst, m.role))
+    return render(request, "users.html", {
+        "user": user, "users": users, "memberships": memberships,
+        "env_admin": request.app.state.settings.admin_user, **extra}, session_token=token)
+
+
+@router.get("/users", response_class=HTMLResponse)
+async def users_list(request: Request):
+    user, token, _ = await auth(request)
+    _need_sys(user)
+    return _users_page(request, user, token)
+
+
+@router.post("/users")
+async def create_user(request: Request):
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
+    username = str(form.get("username", "")).strip().lower()
+    if not _LOCAL_USER_RE.match(username) or username == request.app.state.settings.admin_user:
+        return _users_page(request, user, token,
+                           error="Benutzername: 2–32 Zeichen a–z, 0–9, Punkt, Bindestrich, Unterstrich.")
+    with request.app.state.db.session() as s:
+        if s.scalar(select(User.id).where(User.username == username)) is not None:
+            return _users_page(request, user, token, error=f"Den Benutzer „{username}“ gibt es schon.")
+    password = new_password()
+    pw_hash = await run_in_threadpool(hash_password, password)
+    with request.app.state.db.session() as s:
+        s.add(User(username=username, password_hash=pw_hash, is_admin=False, auth_source="local"))
+        audit(s, "user_created", actor=user.username, ip=_ip(request), user=username)
+        s.commit()
+    return _users_page(request, user, token, new_user=username, new_password=password)
+
+
+def _managed_user(request: Request, user_id: int) -> User:
+    """Ein vom Systemadmin verwaltbarer Benutzer (nicht der Admin aus der .env)."""
+    with request.app.state.db.session() as s:
+        target = s.get(User, user_id)
+    if target is None:
+        raise _NotFound()
+    if target.auth_source == "local" and target.username == request.app.state.settings.admin_user:
+        raise _Forbidden()
+    return target
+
+
+@router.post("/users/{user_id}/password")
+async def reset_user_password(request: Request, user_id: int):
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
+    target = _managed_user(request, user_id)
+    if target.auth_source != "local":
+        return _users_page(request, user, token, error="OIDC-Benutzer haben hier kein Passwort.")
+    password = new_password()
+    pw_hash = await run_in_threadpool(hash_password, password)
+    with request.app.state.db.session() as s:
+        s.get(User, user_id).password_hash = pw_hash
+        s.execute(delete(WebSession).where(WebSession.user_id == user_id))
+        audit(s, "user_password_reset", actor=user.username, ip=_ip(request), user=target.username)
+        s.commit()
+    return _users_page(request, user, token, new_user=target.username, new_password=password)
+
+
+@router.post("/users/{user_id}/delete")
+async def delete_user(request: Request, user_id: int):
+    user, token, form = await auth(request, post=True)
+    _need_sys(user)
+    target = _managed_user(request, user_id)
+    if target.id == user.id:
+        return _users_page(request, user, token, error="Das eigene Konto kann man nicht löschen.")
+    with request.app.state.db.session() as s:
+        s.delete(s.get(User, user_id))  # Sitzungen und Zuweisungen fallen per FK mit weg
+        audit(s, "user_deleted", actor=user.username, ip=_ip(request), user=target.username)
+        s.commit()
+    return _back("/users")
 
 
 # ------------------------------------------------------------------ Geräte und Sitzungen
@@ -562,8 +822,9 @@ def _device(request: Request, device_id: int) -> Device:
 
 @router.post("/devices/{device_id}/disconnect")
 async def disconnect_device(request: Request, device_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
     dev = _device(request, device_id)
+    _need(request, user, dev.instance_id, admin=True)
     await request.app.state.hub.kick_device(device_id, 1000, "disconnected_by_admin")
     _audit(request, "device_disconnected", actor=user.username, device_id=device_id, name=dev.server_name)
     return _back(f"/instances/{dev.instance_id}")
@@ -571,8 +832,9 @@ async def disconnect_device(request: Request, device_id: int):
 
 @router.post("/devices/{device_id}/revoke")
 async def revoke_device(request: Request, device_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
     dev = _device(request, device_id)
+    _need(request, user, dev.instance_id, admin=True)
     with request.app.state.db.session() as s:
         row = s.get(Device, device_id)
         row.revoked_at = utcnow()
@@ -588,8 +850,9 @@ async def revoke_device(request: Request, device_id: int):
 
 @router.post("/devices/{device_id}/delete")
 async def delete_device(request: Request, device_id: int):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
     dev = _device(request, device_id)
+    _need(request, user, dev.instance_id, admin=True)
     if dev.revoked_at is None:
         return _back(f"/instances/{dev.instance_id}")
     with request.app.state.db.session() as s:
@@ -603,11 +866,12 @@ async def delete_device(request: Request, device_id: int):
 
 @router.post("/sessions/{session_id}/end")
 async def end_session(request: Request, session_id: str):
-    user, token, form = await admin(request, post=True)
+    user, token, form = await auth(request, post=True)
     with request.app.state.db.session() as s:
         row = s.get(StreamSession, session_id)
     if row is None:
         raise _NotFound()
+    _need(request, user, row.instance_id, admin=True)
     if await request.app.state.hub.end_session(session_id, "ended_by_admin"):
         _audit(request, "session_ended_by_admin", actor=user.username, session=session_id)
     return _back(f"/instances/{row.instance_id}")
@@ -615,7 +879,8 @@ async def end_session(request: Request, session_id: str):
 
 @router.get("/audit", response_class=HTMLResponse)
 async def audit_log(request: Request):
-    user, token, _ = await admin(request)
+    user, token, _ = await auth(request)
+    _need_sys(user)
     with request.app.state.db.session() as s:
         rows = list(s.scalars(select(AuditLog).order_by(AuditLog.id.desc()).limit(300)))
     entries = []
