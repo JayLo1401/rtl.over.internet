@@ -18,14 +18,14 @@ DNS `rtl.jaycloud.at` (A + AAAA) muss auf den Server zeigen.
 
 ## 2. nginx + Zertifikat
 
-Zuerst das Zertifikat, sonst scheitert `nginx -t` an der fertigen Konfiguration:
+Die Konfiguration enthält zunächst nur HTTP; `certbot --nginx` ergänzt TLS und die Umleitung selbst:
 
 ```sh
-certbot certonly --nginx -d rtl.jaycloud.at
 curl -o /etc/nginx/sites-available/rtl.jaycloud.at \
   https://raw.githubusercontent.com/JayLo1401/rtl.over.internet/main/docs/nginx-rtl.jaycloud.at.conf
 ln -s /etc/nginx/sites-available/rtl.jaycloud.at /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
+certbot --nginx -d rtl.jaycloud.at        # bei der Frage nach Umleitung: Redirect
 ```
 
 ## 3. Arcane
