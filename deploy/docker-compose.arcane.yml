@@ -1,0 +1,53 @@
+# rtl.over.internet auf rtl.jaycloud.at, für Arcane (Projekt „rtl-over-internet“).
+#
+# In Arcane: Projects → New Project → diesen Inhalt als Compose einfügen, Umgebung aus
+# deploy/arcane.env.example übernehmen (nur Geheimnisse und optional OIDC). Anleitung: docs/arcane.md
+#
+# Vorher auf dem Host:
+#   mkdir -p /srv/rtl.over.internet/data && chown 10001:10001 /srv/rtl.over.internet/data && chmod 700 /srv/rtl.over.internet/data
+#   Hetzner-Firewall: UDP 3478–3479 eingehend; nginx + Zertifikat für rtl.jaycloud.at (docs/nginx-rtl.jaycloud.at.conf)
+#
+# network_mode: host ist Pflicht: Der Rendezvous-Endpunkt (UDP 3478/3479) muss die echte Absenderadresse sehen.
+# Die Weboberfläche lauscht deshalb nur auf 127.0.0.1:8090 und ist nur über nginx erreichbar.
+name: rtl-over-internet
+
+services:
+  rtl-over-internet:
+    image: repository.jaycloud.at/rtl.over.internet/rtl-over-internet:${ROI_TAG:-latest}
+    container_name: rtl-over-internet
+    restart: unless-stopped
+    network_mode: host
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      # fest für diesen Server
+      ROI_PUBLIC_URL: https://rtl.jaycloud.at
+      ROI_HTTP_HOST: 127.0.0.1
+      ROI_HTTP_PORT: "8090"
+      ROI_TRUSTED_PROXIES: 127.0.0.1/32,::1/128
+      ROI_RENDEZVOUS_BIND: "::"
+      ROI_RENDEZVOUS_PORTS: "3478,3479"
+      ROI_RENDEZVOUS_HOST: rtl.jaycloud.at
+      ROI_TIMEZONE: Europe/Vienna
+      # aus der Umgebung des Arcane-Projekts
+      ROI_ADMIN_USER: ${ROI_ADMIN_USER:-admin}
+      ROI_ADMIN_PASSWORD: ${ROI_ADMIN_PASSWORD:?ROI_ADMIN_PASSWORD setzen (mind. 12 Zeichen)}
+      ROI_SECRET_KEY: ${ROI_SECRET_KEY:?ROI_SECRET_KEY setzen (mind. 32 Zeichen, nie mehr ändern)}
+      ROI_AUTH_MODES: ${ROI_AUTH_MODES:-all}
+      ROI_OIDC_ISSUER: ${ROI_OIDC_ISSUER:-}
+      ROI_OIDC_CLIENT_ID: ${ROI_OIDC_CLIENT_ID:-}
+      ROI_OIDC_CLIENT_SECRET: ${ROI_OIDC_CLIENT_SECRET:-}
+      ROI_OIDC_BUTTON_LABEL: ${ROI_OIDC_BUTTON_LABEL:-Mit authentik anmelden}
+      ROI_OIDC_ADMIN_GROUPS: ${ROI_OIDC_ADMIN_GROUPS:-}
+      ROI_OIDC_USER_GROUPS: ${ROI_OIDC_USER_GROUPS:-}
+    volumes:
+      - /srv/rtl.over.internet/data:/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

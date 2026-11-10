@@ -72,8 +72,8 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
    ```
 3. Dateien ablegen, Konfiguration und Datenverzeichnis anlegen (Container läuft als UID 10001):
    ```sh
-   git clone https://github.com/JayLo1401/rtl.over.internet.git /opt/rtl.over.internet
-   cd /opt/rtl.over.internet
+   git clone https://github.com/JayLo1401/rtl.over.internet.git /srv/rtl.over.internet
+   cd /srv/rtl.over.internet
    cp .env.example .env
    sed -i "s|^ROI_ADMIN_PASSWORD=.*|ROI_ADMIN_PASSWORD=$(openssl rand -base64 24)|" .env   # oder von Hand setzen
    chmod 600 .env
@@ -91,7 +91,7 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
 
 Update: `docker compose pull && docker compose up -d`. Backup: Verzeichnis `data/` (SQLite).
 Releases entstehen automatisch bei jedem Push auf `main`, siehe [docs/release.md](docs/release.md).
-Betrieb über Arcane: [docs/arcane.md](docs/arcane.md).
+Betrieb über Arcane: [docs/arcane.md](docs/arcane.md) mit [deploy/docker-compose.arcane.yml](deploy/docker-compose.arcane.yml).
 Testablauf: [docs/testing.md](docs/testing.md).
 
 ## Lokaler Test

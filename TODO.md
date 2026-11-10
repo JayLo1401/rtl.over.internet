@@ -51,11 +51,12 @@ Anleitung: [docs/arcane.md](docs/arcane.md)
 
 - [x] DNS `rtl.jaycloud.at` (A + AAAA)
 - [ ] Hetzner-Firewall: TCP 80/443, **UDP 3478–3479** eingehend
-- [ ] `/opt/rtl.over.internet/data` anlegen, `chown 10001:10001`, `chmod 700`
+- [ ] `/srv/rtl.over.internet/data` anlegen, `chown 10001:10001`, `chmod 700`
 - [ ] nginx + certbot für `rtl.jaycloud.at` ([docs/nginx-rtl.jaycloud.at.conf](docs/nginx-rtl.jaycloud.at.conf))
 - [x] Arcane: Registry hinterlegen – nicht nötig, anonymer Pull geht
-- [ ] Arcane: Projekt `rtl-over-internet` mit `docker-compose.yml` und `.env` (Vorlage `.env.example`,
-      mindestens `ROI_ADMIN_PASSWORD`, `ROI_DATA_PATH=/opt/rtl.over.internet/data`)
+- [ ] Arcane: Projekt `rtl-over-internet` mit `deploy/docker-compose.arcane.yml` und der Umgebung aus
+      `deploy/arcane.env.example` (`ROI_TAG`, `ROI_ADMIN_PASSWORD`, `ROI_SECRET_KEY`; ausgefüllt lokal in
+      `data/arcane-rtl.jaycloud.at.env`, nicht im Repo)
 - [ ] Prüfen: `curl -sI https://rtl.jaycloud.at/healthz` → 204, `ss -ulpn | grep -E ':347[89]'`
 
 ## 4. Optional: Anmeldung über authentik

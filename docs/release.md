@@ -58,7 +58,7 @@ Der Release-Workflow prüft `/v2/` als ersten Schritt und bricht mit einem Hinwe
 ## Update auf dem Server
 
 ```sh
-cd /opt/rtl.over.internet
+cd /srv/rtl.over.internet
 docker compose pull && docker compose up -d
 ```
 
