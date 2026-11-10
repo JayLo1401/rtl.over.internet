@@ -40,11 +40,10 @@ Details: [docs/release.md](docs/release.md)
 
 </details>
 
-## 2. Release bauen
+## 2. Release bauen – erledigt 10.11.
 
-- [ ] Release-Workflow neu starten: `gh run rerun --failed -R JayLo1401/rtl.over.internet <run-id>` oder
-      Actions → Release → „Run workflow“
-- [ ] Erwartet: Tag `v0.1.0`, Image `repository.jaycloud.at/rtl.over.internet/rtl-over-internet:0.1.0` und `:latest`
+- [x] Release 0.1.0 (Tag `v0.1.0`), Image `repository.jaycloud.at/rtl.over.internet/rtl-over-internet:0.1.0`
+      und `:latest` (amd64 + arm64). Anonymer Pull funktioniert, Arcane braucht keine Registry-Zugangsdaten.
 
 ## 3. Auf den Server (Hetzner, Arcane)
 
@@ -54,7 +53,7 @@ Anleitung: [docs/arcane.md](docs/arcane.md)
 - [ ] Hetzner-Firewall: TCP 80/443, **UDP 3478–3479** eingehend
 - [ ] `/opt/rtl.over.internet/data` anlegen, `chown 10001:10001`, `chmod 700`
 - [ ] nginx + certbot für `rtl.jaycloud.at` ([docs/nginx-rtl.jaycloud.at.conf](docs/nginx-rtl.jaycloud.at.conf))
-- [ ] Arcane: Registry `repository.jaycloud.at` hinterlegen (falls kein anonymer Pull)
+- [x] Arcane: Registry hinterlegen – nicht nötig, anonymer Pull geht
 - [ ] Arcane: Projekt `rtl-over-internet` mit `docker-compose.yml` und `.env` (Vorlage `.env.example`,
       mindestens `ROI_ADMIN_PASSWORD`, `ROI_DATA_PATH=/opt/rtl.over.internet/data`)
 - [ ] Prüfen: `curl -sI https://rtl.jaycloud.at/healthz` → 204, `ss -ulpn | grep -E ':347[89]'`
