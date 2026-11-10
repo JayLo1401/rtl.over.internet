@@ -66,19 +66,21 @@
 
 <h2>Freigegebene Sticks</h2>
 <table>
-  <thead><tr><th>Anbieter</th><th>Stick</th><th>Name</th><th>Tuner</th><th>Status</th><th>Kompression</th></tr></thead>
+  <thead><tr><th>Anbieter</th><th>Stick</th><th>Name</th><th>Standort</th><th>Antenne</th><th>Tuner</th><th>Status</th><th>Kompression</th></tr></thead>
   <tbody>
   {% for sh, d in shares %}
     <tr>
       <td>{{ d.server_name }} {% if d.id not in online %}<span class="muted">(offline)</span>{% endif %}</td>
       <td class="mono">{{ sh.stick_id }}</td>
       <td>{{ sh.name }}</td>
+      <td>{{ sh.location or '–' }}</td>
+      <td>{{ sh.antenna or '–' }}</td>
       <td>{{ sh.tuner }}</td>
       <td>{{ sh.state }}</td>
       <td>{{ 'ja' if sh.compression else 'nein' }}</td>
     </tr>
   {% else %}
-    <tr><td colspan="6" class="muted">Keine Freigaben.</td></tr>
+    <tr><td colspan="8" class="muted">Keine Freigaben.</td></tr>
   {% endfor %}
   </tbody>
 </table>

@@ -5,7 +5,12 @@ Stand: 10.11.2026. Reihenfolge = Abhängigkeiten.
 Geprüft am 10.11.: `/v2/` am Nexus weiterhin 404 (Punkt 1 offen). DNS `rtl.jaycloud.at` steht (A 168.119.210.123,
 AAAA 2a01:4f8:251:1a53::2). Auf dem Server antwortet HTTP schon (200), HTTPS noch nicht (kein Zertifikat/Server-Block).
 
-## 1. Nexus: Docker-Registry erreichbar machen (blockiert das Release)
+## 1. Nexus: Docker-Registry erreichbar machen – erledigt 10.11.
+
+Umgesetzt mit „Use path-based routing“ und aktivem Docker Bearer Token Realm: `/v2/` liefert 401 mit Bearer-Realm.
+Image: `repository.jaycloud.at/rtl.over.internet/rtl-over-internet`. Die Anleitung unten bleibt als Alternative stehen.
+
+<details><summary>Ursprüngliche Anleitung (Port-Connector)</summary>
 
 `https://repository.jaycloud.at/v2/` liefert **404**. Docker spricht eine Registry immer unter `/v2/` am Host an,
 deshalb bricht der Release-Workflow im ersten Schritt ab, und es gibt noch kein Image. Nexus stellt das
@@ -32,6 +37,8 @@ Docker-API bereits unter `/repository/rtl.over.internet/v2/` bereit (dort 401), 
       Lese-Benutzer oder „Allow anonymous docker pull“
 
 Details: [docs/release.md](docs/release.md)
+
+</details>
 
 ## 2. Release bauen
 

@@ -387,7 +387,8 @@ async def export_all(request: Request):
         } for d in devices],
         "shares": [{
             "device_id": sh.device_id, "stick_id": sh.stick_id, "name": sh.name, "tuner": sh.tuner,
-            "state": sh.state, "compression": sh.compression, "updated_at": _iso(sh.updated_at),
+            "state": sh.state, "compression": sh.compression, "location": sh.location, "antenna": sh.antenna,
+            "updated_at": _iso(sh.updated_at),
         } for sh in shares],
         "sessions": [{
             "id": x.id, "instance_id": x.instance_id, "provider_device_id": x.provider_device_id,

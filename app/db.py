@@ -99,6 +99,8 @@ class Share(Base):
     tuner: Mapped[str] = mapped_column(String(32), default="")
     state: Mapped[str] = mapped_column(String(32), default="")
     compression: Mapped[bool] = mapped_column(Boolean, default=False)
+    location: Mapped[str] = mapped_column(String(100), default="")  # Standort, z. B. „Wien Dach“
+    antenna: Mapped[str] = mapped_column(String(100), default="")  # Antennentyp, Freitext
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 
@@ -159,6 +161,7 @@ class Database:
     _ADDED_COLUMNS = {
         "instances": {"password_enc": "TEXT"},
         "users": {"auth_source": "VARCHAR(16) NOT NULL DEFAULT 'local'"},
+        "shares": {"location": "VARCHAR(100) NOT NULL DEFAULT ''", "antenna": "VARCHAR(100) NOT NULL DEFAULT ''"},
     }
 
     def _add_missing_columns(self) -> None:

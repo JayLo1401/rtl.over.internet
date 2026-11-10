@@ -340,6 +340,9 @@ class Hub:
                 "tuner": _clean(_str(item, "tuner", 32, required=False), 32),
                 "state": _clean(_str(item, "state", 32, required=False, default="unknown"), 32),
                 "compression": bool(item.get("compression", False)),
+                # bis 200 Zeichen angenommen, gespeichert und weitergegeben werden höchstens 100
+                "location": _clean(_str(item, "location", 200, required=False), 100),
+                "antenna": _clean(_str(item, "antenna", 200, required=False), 100),
             }
         with self.db.session() as s:
             existing = {sh.stick_id: sh for sh in s.scalars(select(Share).where(Share.device_id == conn.device_id))}
@@ -608,7 +611,8 @@ class Hub:
         return [
             {"share_id": f"{d.id}:{sh.stick_id}", "provider": {"device_id": d.id, "name": d.server_name},
              "stick_id": sh.stick_id, "name": sh.name, "tuner": sh.tuner, "state": sh.state,
-             "online": d.id in self.conns, "compression": sh.compression}
+             "online": d.id in self.conns, "compression": sh.compression,
+             "location": sh.location, "antenna": sh.antenna}
             for sh, d in rows
         ]
 

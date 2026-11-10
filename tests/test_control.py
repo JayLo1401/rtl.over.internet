@@ -80,7 +80,7 @@ def test_welcome_and_shares(client, pair):
             "share_id": f"{a['device_id']}:00000001",
             "provider": {"device_id": a["device_id"], "name": "Dachboden"},
             "stick_id": "00000001", "name": "Standort1 Stick 1", "tuner": "R828D", "state": "ready",
-            "online": True, "compression": False}]
+            "online": True, "compression": False, "location": "", "antenna": ""}]
         own = recv(wa, "shares")
         while not own["shares"]:
             own = recv(wa, "shares")
@@ -90,6 +90,39 @@ def test_welcome_and_shares(client, pair):
     offline = recv(wb, "shares")
     assert offline["shares"][0]["online"] is False
     _close(wb)
+
+
+def test_location_and_antenna_passed_through(client, app, pair):
+    from tests.conftest import login
+
+    inst, a, b = pair
+    wa = connect(client, a["device_token"]).__enter__()
+    hello(wa)
+    wb = connect(client, b["device_token"]).__enter__()
+    hello(wb, "Wohnzimmer", FP_B)
+    try:
+        wa.send_json({"type": "announce", "shares": [
+            {**STICK, "location": "Wien Dach", "antenna": "DAB-Rundstrahler"},
+            {**STICK, "stick_id": "00000002", "location": "x" * 150, "antenna": "Zeile\nUmbruch"},
+            {**STICK, "stick_id": "00000003"}]})
+        shares = recv(wb, "shares")
+        while len(shares["shares"]) < 3:
+            shares = recv(wb, "shares")
+        by_id = {s["stick_id"]: s for s in shares["shares"]}
+        assert (by_id["00000001"]["location"], by_id["00000001"]["antenna"]) == ("Wien Dach", "DAB-Rundstrahler")
+        assert by_id["00000002"]["location"] == "x" * 100  # gekürzt
+        assert by_id["00000002"]["antenna"] == "ZeileUmbruch"  # Steuerzeichen entfernt
+        assert (by_id["00000003"]["location"], by_id["00000003"]["antenna"]) == ("", "")  # ältere Server
+        # falscher Typ wird abgelehnt
+        wa.send_json({"type": "announce", "shares": [{**STICK, "location": 5}]})
+        assert recv(wa, "error")["code"] == "BAD_REQUEST"
+        login(client)
+        page = client.get(f"/instances/{inst.id}").text
+        assert "Wien Dach" in page and "DAB-Rundstrahler" in page
+        exp = {s["stick_id"]: s for s in client.get("/export.json").json()["shares"]}
+        assert exp["00000001"]["antenna"] == "DAB-Rundstrahler"
+    finally:
+        _close(wa, wb)
 
 
 def test_welcome_contents(client, pair, settings):

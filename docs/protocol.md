@@ -1,6 +1,9 @@
 # Schnittstelle rtl.over.internet ↔ rtltcp.server
 
-Status: **Entwurf 3** · Gegenstück: `rtltcp.server` (Anbieter = Standort 1, Nutzer = Standort 2)
+Status: **Entwurf 4** · Gegenstück: `rtltcp.server` (Anbieter = Standort 1, Nutzer = Standort 2)
+
+Entwurf 4: optionale Felder `location` (Standort) und `antenna` (Antennentyp) pro Freigabe in `announce` und
+`shares` (§2.2, §2.3). Abwärtskompatibel, ältere Server senden sie nicht bzw. ignorieren sie.
 
 Entwurf 3: Enrollment nur noch mit Instanz-Code und Passwort, ohne Benutzer (§1).
 
@@ -75,12 +78,18 @@ Vergleich ignorieren. `server_name` aus dem `hello` ersetzt den Namen aus dem En
 ```
 S → V  { "type": "announce", "shares": [
            { "stick_id": "00000001", "name": "Standort1 Stick 1", "tuner": "R828D",
-             "state": "ready", "compression": false } ] }
+             "state": "ready", "compression": false,
+             "location": "Wien Dach", "antenna": "DAB-Rundstrahler" } ] }
 ```
+
+`location` und `antenna` sind optional (Freitext, wie im rtltcp.server pro Gerät eingetragen). Sie entsprechen
+`server_info.device.location` und `server_info.device.antenna` in rtl_tcp Jay extended. Bis 200 Zeichen werden
+angenommen, gespeichert und weitergegeben werden höchstens 100 druckbare Zeichen. Fehlen sie, gilt `""`.
 
 Immer die vollständige Liste. Erneut senden, sobald sich etwas ändert (Name, Zustand, Freigabe). `state` wie
 in Jay extended (`ready`, `idle`, `device_not_ready`, `device_lost`, `busy`). Grenzen: max. 64 Freigaben,
-`stick_id` 1–64 druckbare ASCII-Zeichen ohne Leerzeichen, `name` max. 100, `tuner` und `state` max. 32 Zeichen.
+`stick_id` 1–64 druckbare ASCII-Zeichen ohne Leerzeichen, `name` max. 100, `tuner` und `state` max. 32 Zeichen,
+`location` und `antenna` siehe oben.
 Der Vermittler speichert den letzten Stand, eine leere Liste entfernt alle Freigaben des Anbieters.
 
 ### 2.3 Nutzer: verfügbare Sticks
@@ -89,8 +98,12 @@ Der Vermittler speichert den letzten Stand, eine leere Liste entfernt alle Freig
 V → S  { "type": "shares", "shares": [
            { "share_id": "12:00000001", "provider": { "device_id": 12, "name": "Dachboden" },
              "stick_id": "00000001", "name": "Standort1 Stick 1", "tuner": "R828D",
-             "state": "ready", "online": true, "compression": false } ] }
+             "state": "ready", "online": true, "compression": false,
+             "location": "Wien Dach", "antenna": "DAB-Rundstrahler" } ] }
 ```
+
+`location` und `antenna` kommen unverändert vom Anbieter (immer vorhanden, ggf. `""`). Der Nutzer-Server gibt sie
+für den entfernten Stick lokal als `server_info.device.location`/`antenna` an seine Clients (home.radio) weiter.
 
 Alle Freigaben der Instanz (auch die eigenen, mit `provider.device_id` = eigene ID). Wird bei jeder Änderung neu
 gesendet. Ein Anbieter, der offline geht, bleibt mit `online: false` in der Liste.
