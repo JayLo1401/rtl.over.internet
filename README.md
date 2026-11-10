@@ -48,11 +48,13 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
 |---|---|---|
 | `ROI_ADMIN_USER` | – | Admin-Benutzer (Pflicht außer bei `ROI_AUTH_MODES=oidc`) |
 | `ROI_ADMIN_PASSWORD` / `ROI_ADMIN_PASSWORD_FILE` | – | Admin-Passwort, mind. 12 Zeichen (Pflicht außer bei `oidc`). Wird beim Start gesetzt, gespeichert wird nur der Hash. |
-| `ROI_PUBLIC_URL` | `http://localhost:8090` | öffentliche Adresse, z. B. `https://rtl.jaycloud.at` |
+| `ROI_PUBLIC_URL` | `http://localhost:8090` | öffentliche Adresse, z. B. `https://mediator.example.com` |
+| `ROI_IMAGE` | `rtl-over-internet:latest` | nur `docker-compose.yml`: Image; ohne Registry wird es lokal gebaut |
+| `ROI_DATA_PATH` | `./data` | nur `docker-compose.yml`: Datenverzeichnis auf dem Host (UID 10001) |
 | `ROI_AUTH_MODES` | `all` | `all` (Passwort + OIDC), `internal` (nur Passwort), `oidc` (nur OIDC, kein Admin-Passwort nötig) |
-| `ROI_OIDC_ISSUER`, `ROI_OIDC_CLIENT_ID`, `ROI_OIDC_CLIENT_SECRET` | leer | OpenID Connect (authentik, wie bei order.manager). Redirect-URI: `<ROI_PUBLIC_URL>/login/oidc/callback` |
+| `ROI_OIDC_ISSUER`, `ROI_OIDC_CLIENT_ID`, `ROI_OIDC_CLIENT_SECRET` | leer | OpenID Connect (z. B. authentik, Keycloak). Redirect-URI: `<ROI_PUBLIC_URL>/login/oidc/callback` |
 | `ROI_OIDC_ADMIN_GROUPS` / `ROI_OIDC_USER_GROUPS` | leer | Gruppen aus dem Claim `groups`: Systemadmin bzw. Benutzer ohne Rechte (bis ihm Instanzen zugewiesen werden). Mindestens eine Pflicht, sobald OIDC konfiguriert ist |
-| `ROI_OIDC_BUTTON_LABEL` | `Mit authentik anmelden` | Text des Buttons |
+| `ROI_OIDC_BUTTON_LABEL` | `Mit SSO anmelden` | Text des Buttons |
 | `ROI_TRUSTED_PROXIES` | leer | IPs/Netze, von denen `X-Forwarded-For` übernommen wird (nginx) |
 | `ROI_SECRET_KEY` | erzeugt | Schlüssel für CSRF-Tokens (mind. 32 Zeichen). Fehlt er, wird er in `/data/secret_key` angelegt. |
 | `ROI_COOKIE_SECURE` | aus URL | `Secure`-Cookie; Standard: an bei `https://`-URL, sonst aus (lokaler Test) |
@@ -63,36 +65,14 @@ Hole-Punching) und nie über diesen Dienst.** Ein Relay gibt es nicht.
 | `ROI_DATA_DIR` | `/data` | SQLite-Datenbank und Schlüssel |
 | `ROI_TIMEZONE` | `Europe/Vienna` | Zeitzone der Anzeige |
 
-## Installation auf dem Server (Hetzner, rtl.jaycloud.at)
+## Installation auf einem Server
 
-1. DNS: `A`- und `AAAA`-Eintrag für `rtl.jaycloud.at` auf den Server.
-2. Firewall (Hetzner Cloud Firewall **und** ggf. `ufw`): TCP 80, 443 sowie **UDP 3478–3479** eingehend erlauben.
-   ```sh
-   ufw allow 3478:3479/udp
-   ```
-3. Dateien ablegen, Konfiguration und Datenverzeichnis anlegen (Container läuft als UID 10001):
-   ```sh
-   git clone https://github.com/JayLo1401/rtl.over.internet.git /srv/rtl.over.internet
-   cd /srv/rtl.over.internet
-   cp .env.example .env
-   sed -i "s|^ROI_ADMIN_PASSWORD=.*|ROI_ADMIN_PASSWORD=$(openssl rand -base64 24)|" .env   # oder von Hand setzen
-   chmod 600 .env
-   mkdir -p data && chown 10001:10001 data && chmod 700 data
-   docker login repository.jaycloud.at   # nur, wenn das Repository keinen anonymen Pull erlaubt
-   docker compose pull && docker compose up -d
-   ```
-   Das Image kommt aus dem Release-Workflow (siehe [docs/release.md](docs/release.md)).
-   `docker-compose.yml` nutzt `network_mode: host`, damit der Rendezvous-Endpunkt die echte Absenderadresse sieht
-   (kein Docker-Portmapping, kein IPv6→IPv4-Proxy). Die Weboberfläche lauscht dadurch nur auf `127.0.0.1:8090`.
-4. nginx und Zertifikat: [docs/nginx-rtl.jaycloud.at.conf](docs/nginx-rtl.jaycloud.at.conf) nach
-   `/etc/nginx/sites-available/` kopieren, verlinken, `certbot certonly --webroot -w /var/www/certbot -d rtl.jaycloud.at`,
-   `nginx -t && systemctl reload nginx`. Wichtig: WebSocket-Upgrade und `proxy_read_timeout 1h` für `/api/v1/control`.
-5. Anmelden unter `https://rtl.jaycloud.at` mit `admin` und dem Passwort aus `.env` (`ROI_ADMIN_PASSWORD`).
+Kurz: DNS-Name, Firewall für TCP 80/443 und **UDP 3478–3479**, `.env` aus `.env.example`,
+`docker compose up -d --build`, nginx davor ([docs/nginx.conf.example](docs/nginx.conf.example)) und
+`certbot --nginx`. Schritt für Schritt: [docs/deployment.md](docs/deployment.md).
 
-Update: `docker compose pull && docker compose up -d`. Backup: Verzeichnis `data/` (SQLite).
-Releases entstehen automatisch bei jedem Push auf `main`, siehe [docs/release.md](docs/release.md).
-Betrieb über Arcane: [docs/arcane.md](docs/arcane.md) mit [deploy/docker-compose.arcane.yml](deploy/docker-compose.arcane.yml).
-Testablauf: [docs/testing.md](docs/testing.md).
+- Releases und Images für eine eigene Registry: [docs/release.md](docs/release.md)
+- Testablauf: [docs/testing.md](docs/testing.md)
 
 ## Lokaler Test
 
@@ -104,7 +84,7 @@ python -m venv .venv
 $env:ROI_DATA_DIR = ".\data"
 $env:ROI_ADMIN_USER = "admin"
 $env:ROI_ADMIN_PASSWORD = "mindestens-12-zeichen"
-$env:ROI_PUBLIC_URL = "http://192.168.100.10:8090"   # LAN-Adresse dieses Rechners
+$env:ROI_PUBLIC_URL = "http://<LAN-IP>:8090"   # LAN-Adresse dieses Rechners
 $env:ROI_HTTP_HOST = "0.0.0.0"
 .\.venv\Scripts\python -m app
 ```

@@ -1,4 +1,4 @@
-/* Farben und Formen wie jaycloud.at (assets/style.css dort) */
+/* Farben und Formen der Weboberfläche */
 :root {
   --bg: #f6f7f5; --fg: #17201b; --muted: #5b675f; --card: #ffffff; --line: #dfe3df;
   --accent: #23854b; --accent-soft: #e3f2e8; --ok: #23854b; --bad: #b42318; --warn: #c27c00;

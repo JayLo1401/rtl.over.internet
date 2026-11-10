@@ -58,11 +58,11 @@ class Settings:
     lease_interval: float = 20.0
     lease_ttl: int = 60
     hello_timeout: float = 10.0
-    # OpenID Connect (z. B. authentik), wie bei order.manager
+    # OpenID Connect (z. B. authentik)
     oidc_issuer: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
-    oidc_button_label: str = "Mit authentik anmelden"
+    oidc_button_label: str = "Mit SSO anmelden"
     oidc_admin_groups: frozenset = frozenset()  # Systemadmins
     oidc_user_groups: frozenset = frozenset()  # dürfen sich anmelden, Rechte nur über Instanz-Zuweisungen
     extra: dict = field(default_factory=dict)
@@ -150,7 +150,7 @@ def load_settings(**overrides) -> Settings:
         "oidc_issuer": _env("ROI_OIDC_ISSUER", "") or "",
         "oidc_client_id": _env("ROI_OIDC_CLIENT_ID", "") or "",
         "oidc_client_secret": _env("ROI_OIDC_CLIENT_SECRET", "") or "",
-        "oidc_button_label": _env("ROI_OIDC_BUTTON_LABEL", "Mit authentik anmelden"),
+        "oidc_button_label": _env("ROI_OIDC_BUTTON_LABEL", "Mit SSO anmelden"),
         "oidc_admin_groups": _set("ROI_OIDC_ADMIN_GROUPS"),
         "oidc_user_groups": _set("ROI_OIDC_USER_GROUPS"),
     }

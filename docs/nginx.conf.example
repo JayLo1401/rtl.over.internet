@@ -1,17 +1,19 @@
-# nginx für rtl.over.internet auf rtl.jaycloud.at
+# nginx vor rtl.over.internet (Beispiel)
 #
-# Ablage: /etc/nginx/sites-available/rtl.jaycloud.at, verlinkt nach sites-enabled.
-# Zuerst nur HTTP; danach ergänzt certbot den TLS-Teil und die Umleitung selbst:
+# Platzhalter: mediator.example.com → eigener Hostname, 8090 → ROI_HTTP_PORT.
+# Ablage z. B. /etc/nginx/sites-available/<hostname>, verlinkt nach sites-enabled (bzw. conf.d/<hostname>.conf).
+#
+# Die Datei enthält zunächst nur HTTP. Das Zertifikat und die Umleitung auf HTTPS ergänzt danach certbot:
 #   nginx -t && systemctl reload nginx
-#   certbot --nginx -d rtl.jaycloud.at
+#   certbot --nginx -d mediator.example.com
 #
-# Nur Weboberfläche und Steuerkanal laufen über nginx. Der Rendezvous-Endpunkt (UDP 3478/3479) geht
-# NICHT über nginx, sondern direkt an den Container (network_mode: host).
+# Nur Weboberfläche, Enrollment und Steuerkanal laufen über nginx. Der Rendezvous-Endpunkt
+# (UDP 3478/3479) geht NICHT über nginx, sondern direkt an den Container (network_mode: host).
 
 server {
     listen 80;
     listen [::]:80;
-    server_name rtl.jaycloud.at;
+    server_name mediator.example.com;
     server_tokens off;
 
     # Die App braucht nur kleine Anfragen (Formulare, Enrollment)
@@ -25,7 +27,7 @@ server {
         proxy_set_header Upgrade           $http_upgrade;
         proxy_set_header Connection        "upgrade";
         proxy_set_header Host              $host;
-        # überschreiben, nicht anhängen: Clients können die Adresse so nicht fälschen
+        # überschreiben, nicht anhängen: Clients können ihre Adresse so nicht fälschen
         proxy_set_header X-Forwarded-For   $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 1h;

@@ -29,7 +29,7 @@ def fake(monkeypatch):
 
 
 def _callback(c, fake, email, groups=None):
-    info = {"email": email, "name": "Jay"}
+    info = {"email": email, "name": "Alice"}
     if groups is not None:
         info["groups"] = groups
     fake.authorize_access_token = AsyncMock(return_value={"userinfo": info})
@@ -45,8 +45,8 @@ def test_button_hidden_without_config(client):
 def test_admin_group_logs_in_as_sysadmin(settings, fake):
     with TestClient(create_app(_configure(settings))) as c:
         page = c.get("/login").text
-        assert "Mit authentik anmelden" in page and 'name="password"' in page  # beide Anmeldearten
-        r = _callback(c, fake, "Jay@JayCloud.at", groups=["rtl-admins"])
+        assert "Mit SSO anmelden" in page and 'name="password"' in page  # beide Anmeldearten
+        r = _callback(c, fake, "Alice@Example.org", groups=["rtl-admins"])
         assert r.status_code == 200
         assert 'http-equiv="refresh"' in r.text
         assert "roi_session=" in r.headers["set-cookie"] and "SameSite=strict" in r.headers["set-cookie"]
@@ -54,7 +54,7 @@ def test_admin_group_logs_in_as_sysadmin(settings, fake):
         audit = c.get("/audit").text  # nur Systemadmins
         assert "login_oidc" in audit and "oidc_user_created" in audit
         # zweite Anmeldung legt keinen weiteren Benutzer an
-        _callback(c, fake, "jay@jaycloud.at", groups=["rtl-admins"])
+        _callback(c, fake, "alice@example.org", groups=["rtl-admins"])
         with c.app.state.db.session() as s:
             assert s.query(User).filter_by(auth_source="oidc").count() == 1
             assert s.query(User).filter_by(auth_source="oidc").one().is_admin is True
@@ -110,14 +110,14 @@ def test_redirect_uri_uses_public_url(settings, fake):
 def test_oidc_only_mode(settings, fake):
     with TestClient(create_app(_configure(settings, mode="oidc"))) as c:
         page = c.get("/login").text
-        assert 'name="password"' not in page and "Mit authentik anmelden" in page
+        assert 'name="password"' not in page and "Mit SSO anmelden" in page
         assert c.post("/login", data={"username": "admin", "password": ADMIN_PW}).status_code == 403
         # Admin-Passwort gilt nicht mehr für das Enrollment, das Instanz-Passwort schon
         inst = make_instance(c.app)
         body = {"instance_code": inst.code, "server_id": "s1"}
         assert c.post("/api/v1/enroll", json={**body, "password": ADMIN_PW}).status_code == 401
         assert c.post("/api/v1/enroll", json={**body, "password": INST_PW}).status_code == 200
-        assert _callback(c, fake, "jay@jaycloud.at", groups=["rtl-admins"]).status_code == 200
+        assert _callback(c, fake, "alice@example.org", groups=["rtl-admins"]).status_code == 200
 
 
 def test_internal_mode_ignores_oidc(settings, fake):
@@ -131,14 +131,14 @@ def test_local_admin_kept_besides_oidc_user(settings, fake):
     s = _configure(settings)
     app = create_app(s)
     with TestClient(app) as c:
-        _callback(c, fake, "jay@jaycloud.at", groups=["rtl-admins"])
+        _callback(c, fake, "alice@example.org", groups=["rtl-admins"])
     from app.main import ensure_admin
 
     s.admin_password = ADMIN_PW
     ensure_admin(app.state.db, s)  # Neustart: lokaler Admin wird abgeglichen, OIDC-Benutzer bleibt
     with app.state.db.session() as db:
         assert {(u.username, u.auth_source) for u in db.query(User)} == {("admin", "local"),
-                                                                       ("jay@jaycloud.at", "oidc")}
+                                                                       ("alice@example.org", "oidc")}
 
 
 def test_config_validation(tmp_path, monkeypatch):
@@ -154,9 +154,9 @@ def test_config_validation(tmp_path, monkeypatch):
     monkeypatch.setenv("ROI_OIDC_USER_GROUPS", "rtl-users")
     with pytest.raises(ConfigError, match="ADMIN_GROUPS"):  # oidc-only ohne Systemadmin geht nicht
         load_settings()
-    monkeypatch.setenv("ROI_OIDC_ADMIN_GROUPS", "rtl-admins, jaycloud admins")
+    monkeypatch.setenv("ROI_OIDC_ADMIN_GROUPS", "rtl-admins, sso admins")
     s = load_settings()  # oidc-only: kein Admin-Passwort nötig
-    assert s.admin_user is None and s.oidc_admin_groups == {"rtl-admins", "jaycloud admins"}
+    assert s.admin_user is None and s.oidc_admin_groups == {"rtl-admins", "sso admins"}
     assert s.oidc_role(["x", "rtl-users"]) == "user" and s.oidc_role(["rtl-admins", "rtl-users"]) == "admin"
     assert s.oidc_role(None) is None and s.oidc_role("rtl-admins") is None
     monkeypatch.setenv("ROI_AUTH_MODES", "all")

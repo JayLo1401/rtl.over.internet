@@ -52,7 +52,7 @@ und füllt damit Server-URL, Instanz-Code und Passwort aus, sodass nichts abgesc
 {
   "format": "rtl.over.internet/credentials",
   "version": 1,
-  "server": "https://rtl.jaycloud.at",
+  "server": "https://mediator.example.com",
   "instance_code": "K7QM-4XPD",
   "password": "…",
   "instance": { "id": 3, "name": "Funkfreund Max" },
@@ -72,7 +72,7 @@ und füllt damit Server-URL, Instanz-Code und Passwort aus, sodass nichts abgesc
 
 ## 2. Steuerkanal
 
-`wss://rtl.jaycloud.at/api/v1/control`, Header `Authorization: Bearer <device_token>`.
+`wss://mediator.example.com/api/v1/control`, Header `Authorization: Bearer <device_token>`.
 Eine Verbindung pro Token (also pro Instanz). Alle Nachrichten sind JSON-Textframes mit `"type"`, max. 64 KiB.
 Unbekannte Felder und Typen werden ignoriert. WebSocket-Ping alle 20 s. Bei Abbruch neu verbinden mit Backoff
 (1 s, 2 s, 4 s … max. 60 s).
@@ -91,7 +91,7 @@ beim Upgrade), damit der Client den Grund sicher erkennt.
 ```
 S → V  { "type": "hello", "server_name": "Dachboden", "version": "1.3.0", "cert_fp": "AB:CD:…" }
 V → S  { "type": "welcome", "device_id": 12, "instance": { "id": 3, "name": "Funkfreund Max" },
-         "rendezvous": [ { "host": "rtl.jaycloud.at", "port": 3478 }, { "host": "rtl.jaycloud.at", "port": 3479 } ] }
+         "rendezvous": [ { "host": "mediator.example.com", "port": 3478 }, { "host": "mediator.example.com", "port": 3479 } ] }
 V → S  { "type": "shares", … }      (siehe 2.3)
 ```
 

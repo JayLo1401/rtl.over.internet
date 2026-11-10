@@ -11,7 +11,7 @@ name: Release
 #      Schlägt etwas fehl, gibt es keinen Tag, der nächste Push baut dieselbe Version neu.
 #
 # Secrets:   NEXUS_USER, NEXUS_PASS (Nexus-Benutzer mit Push-Recht auf das Docker-Repository)
-# Variablen: NEXUS_URL (https://repository.jaycloud.at), NEXUS_REPO (rtl.over.internet, Docker hosted)
+# Variablen: NEXUS_URL (z. B. https://registry.example.com), NEXUS_REPO (Docker hosted)
 #            Image: <Host aus NEXUS_URL>/<NEXUS_REPO>/rtl-over-internet (Nexus mit Path-Based-Routing)
 # Einrichtung des Docker-Repositorys im Nexus: docs/release.md
 

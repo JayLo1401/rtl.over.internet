@@ -1,7 +1,7 @@
 # Lokaler Test im LAN (z. B. Docker Desktop unter Windows), ohne TLS:
 #
 #   .env aus .env.example anlegen und setzen:
-#     ROI_PUBLIC_URL=http://192.168.100.101:8090     # LAN-Adresse dieses Rechners
+#     ROI_PUBLIC_URL=http://<LAN-IP>:8090         # LAN-Adresse dieses Rechners
 #     ROI_ADMIN_PASSWORD=mindestens-12-zeichen
 #   docker compose -f docker-compose.local.yml up --build
 #   (ROI_HTTP_HOST und ROI_RENDEZVOUS_BIND sind hier fest, weil der Container über Portmapping erreichbar sein muss.)

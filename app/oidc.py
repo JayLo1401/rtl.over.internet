@@ -1,4 +1,4 @@
-"""Anmeldung über OpenID Connect (z. B. authentik), wie bei order.manager.
+"""Anmeldung über OpenID Connect (z. B. authentik).
 
 Die Rolle kommt aus dem Claim "groups" (bei authentik im Scope "profile"):
 ROI_OIDC_ADMIN_GROUPS = Systemadmin, ROI_OIDC_USER_GROUPS = Benutzer ohne Rechte (bis ihm Instanzen
