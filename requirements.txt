@@ -9,7 +9,7 @@ argon2-cffi==25.1.0
 argon2-cffi-bindings==26.1.0
 python-multipart==0.0.33
 pydantic==2.14.3
-pydantic_core==2.50.4
+pydantic_core==2.50.5
 anyio==4.16.0
 tzdata==2026.6
 Authlib==1.9.5
