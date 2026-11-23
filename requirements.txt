@@ -2,7 +2,7 @@ fastapi==0.162.2
 starlette==1.10.0
 uvicorn[standard]==0.54.0
 websockets==17.4
-SQLAlchemy==2.1.8
+SQLAlchemy==2.1.9
 Jinja2==3.1.6
 MarkupSafe==3.0.4
 argon2-cffi==25.1.0
